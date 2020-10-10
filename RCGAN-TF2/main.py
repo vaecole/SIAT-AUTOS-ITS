@@ -3,9 +3,9 @@
 import datetime
 import os
 import numpy as np
-from src_v2.data_process import get_data, write_data
-from src_v2.image_utils import plot_show
-from src_v2.utils import train
+from data_process import get_data, write_data
+from image_utils import plot_show
+from utils import train
 
 if __name__ == '__main__':
 
@@ -18,14 +18,14 @@ if __name__ == '__main__':
     hidden = 100  # LSTM层的神经元个数
     batch_size = 1  # LSTM层的batch_size
     time_step = 96  # LSTM层的time_step
-    learn_set = 400  # 迭代次数列表
+    learn_set = 1000  # 迭代次数列表
     cond_dim = 2  # 条件值
     latent_dim = 1  # latent space 维度
     num_run = 1  # 运行的次数
     num_gen_once = 1  # 单次生成序列
     LR = 0.001  # 学习率
     # 数据处理部分
-    data = '../data'  # 读取data文件夹内的数据集，数据集是一个月内的停车数据 每十五分钟取一个点，每天96个点
+    data = './data'  # 读取data文件夹内的数据集，数据集是一个月内的停车数据 每十五分钟取一个点，每天96个点
     sample_set, index, num_seq = get_data(data, sample_size)
     index_list = [i for i in range(num_seq)]
 

@@ -13,7 +13,7 @@ class NoiseDistribution(object):
     def sample(self, n):
         offset = np.random.random(n) * (float(self.range) / n)
         samples = np.linspace(-self.range, self.range, n) + offset  # [-5,5]均分加偏置值
-        samples = np.reshape(samples, newshape=[1, n, 1])
+        samples = np.reshape(samples, newshape=[n, 1])
         return samples
 
     @staticmethod
