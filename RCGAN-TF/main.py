@@ -16,7 +16,7 @@ if __name__ == '__main__':
     hidden = 100  # LSTM层的神经元个数
     batch_size = 1  # LSTM层的batch_size
     time_step = 96  # LSTM层的timestep
-    learn_set = 400  # 迭代次数列表
+    learn_set = 1700  # 迭代次数列表
     cond_dim = 2  # 条件值
     latent_dim = 1  # latent space 维度
     num_run = 1  # 运行的次数

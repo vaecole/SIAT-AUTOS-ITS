@@ -48,23 +48,28 @@ class OneHot(object):
 
 def get_data(data_path, batch_size=96):
     """
-    Read data
+    Read monthly and daily(96*15min=24H) 96 units parking rate which in (0,1) per 15 minutes and encoded day type(weekend=[1,0], workday=[0,1])
     """
     total_batch = 0
     file_names = os.listdir(data_path)
-    day_parking_rate = []
+    monthly_parking_rate = []
+    monthly_day_types = []
     one_hot = OneHot(batch_size)  # 30, 96, 2
     for file_name in file_names:
         if os.path.isdir(file_name):
             continue
-        df = pd.read_excel(data_path + "/" + file_name)
-        total_batch += int(len(df) / batch_size)
-        # 96 points for each day
-        day_parking_rate.append(
-            [list(map(lambda x: [x[0]] + one_hot.encode(int(x[1])),
-                      df.values[day * batch_size:day * batch_size + batch_size]))
-             for day in range(total_batch)])
-    return day_parking_rate, total_batch
+        dataframe = pd.read_excel(data_path + "/" + file_name)
+        current_batch = int(len(dataframe) / batch_size)
+        total_batch += current_batch
+        # 1 monthly days, 96 points for each day
+        for day in range(current_batch):
+            monthly_parking_rate.append(
+                [list(map(lambda x: [x[0]],
+                          dataframe.values[day * batch_size:day * batch_size + batch_size])),
+                 list(map(lambda x: one_hot.encode(int(x[1])),
+                          dataframe.values[day * batch_size:day * batch_size + batch_size]))])
+
+        return monthly_parking_rate
 
 
 def write_data(g_data, num_gen_once, sample_size, cond_dim, num_run):

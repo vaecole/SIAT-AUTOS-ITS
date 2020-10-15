@@ -15,7 +15,7 @@ def collect_gc():
 
 
 # 优化器
-def optimizer(loss, var_list, num_decay_steps=400, initial_learning_rate=0.03):
+def optimizer(loss, var_list, num_decay_steps=1000, initial_learning_rate=0.03):
     decay = 0.95
     batch = tf.Variable(0)
 
@@ -61,7 +61,7 @@ def train(sample_set, index, sample_size, TRAIN_ITERS, batch_size, n_hidden, tim
     g_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope='Gen')
 
     # 优化器设定
-    from src.utils import optimizer
+    from utils import optimizer
     opt_d = optimizer(loss_d, d_params, 400, LR)  #
     opt_g = optimizer(loss_g, g_params, 400, LR)  #
 
@@ -69,10 +69,10 @@ def train(sample_set, index, sample_size, TRAIN_ITERS, batch_size, n_hidden, tim
     # training-loop
     # sess = tf.InteractiveSession()
     # tf.global_variables_initializer().run()
-    from src.NoiseDistribution import NoiseDistribution
+    from NoiseDistribution import NoiseDistribution
     p_z = NoiseDistribution(RANGE)
     # 转换为one_hot形式
-    from src.data_process import OneHot
+    from data_process import OneHot
     lab_to_one = OneHot(num_seq, sample_size, cond_dim)
 
     with tf.Session() as sess:
@@ -92,8 +92,8 @@ def train(sample_set, index, sample_size, TRAIN_ITERS, batch_size, n_hidden, tim
                     loss_g_, _ = sess.run([loss_g, opt_g], {z: np.reshape(z_, (batch_size, sample_size, latent_dim)),
                                                             y: np.reshape(y_, (batch_size, sample_size, cond_dim))})
 
-            if step % 100 == 0:
-                print('[%d/%d]: loss_d : %.3f, loss_g : %.3f' % (step, TRAIN_ITERS, loss_d_, loss_g_))
+            from datetime import datetime
+            print('[%3d/%d]: loss_d : %.3f, loss_g : %.3f, %s' % (step, TRAIN_ITERS, loss_d_, loss_g_, datetime.now()))
 
         # generate
 
@@ -113,7 +113,7 @@ def train(sample_set, index, sample_size, TRAIN_ITERS, batch_size, n_hidden, tim
             g_seq_label.append(g_seq)
         g_seq_label = np.array(g_seq_label)
 
-    from src.utils import collect_gc
+    from utils import collect_gc
     collect_gc()
     tf.reset_default_graph()  # 第二次执行的时候避免新建已经有的值
     return g_seq_label

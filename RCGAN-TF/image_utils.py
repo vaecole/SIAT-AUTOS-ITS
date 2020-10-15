@@ -1,13 +1,9 @@
 
-# coding=gbk
 import os
 import matplotlib.pyplot as plt
 
-
-def plot_show(learn_set, g_data, index, con_dim, num_run, num_gen_once):
-    """
-    »æÖÆÍ¼Ïñ
-    """
+#ç»˜åˆ¶å›¾åƒ
+def plot_show(learn_set,g_data,sample_data,con_dim,num_run,num_gen_once):
     if not os.path.exists('generation' + str(learn_set)):
         os.makedirs('generation' + str(learn_set))
     for i in range(con_dim):
