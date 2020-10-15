@@ -10,7 +10,7 @@ import time
 import tensorflow as tf
 import numpy as np
 
-epochs = 5
+epochs = 800
 batch_size = 96
 save_interval = 5
 
@@ -54,17 +54,24 @@ class Train:
             time_consumed_agv = time_consumed_total / epoch
             epochs_last = epochs - epoch
             estimate_time_last = epochs_last * time_consumed_agv
-            print('Time for epoch {} is {} sec - gen_loss = {}, disc_loss = {}, time estimated to finish: {}'
-                  .format(epoch, time.time() - start,
+            print('Time for epoch {}/{} is {} sec - gen_loss = {}, disc_loss = {}, time estimated to finish: {}'
+                  .format(epoch, epochs, time.time() - start,
                           total_gen_loss / batch_size,
                           total_disc_loss / batch_size,
                           estimate_time_last))
 
             if epoch % save_interval == 0:
                 save_images(save_path, epoch, self.generator, seed, avg_weekend, avg_workday)
+                if epoch > 199:
+                    gen_data = np.concatenate((np.reshape(self.generator(seed, self.condition_weekend, False),
+                                                          (1, 96)),
+                                               np.reshape(self.generator(seed, self.condition_workday, False),
+                                                          (1, 96))), axis=0)
+                    write_data(save_path, gen_data, 96, 2, epoch)
+
         gen_data = np.concatenate((np.reshape(self.generator(seed, self.condition_weekend, False), (1, 96)),
                                    np.reshape(self.generator(seed, self.condition_workday, False), (1, 96))), axis=0)
-        write_data(save_path, gen_data, 96, 2)
+        write_data(save_path, gen_data, 96, 2, 'final')
         self.generator.save_weights(save_path + '/model_generator_weight')
         self.discriminator.save_weights(save_path + '/model_discriminator_weight')
         print('models saved into path: ' + save_path + ', total time consumed: %s' % time_consumed_total)
@@ -122,14 +129,17 @@ class Train:
         """
         ...
         """
+        weekends, workdays = 0, 0
         weekend_total, workday_total = tf.zeros((96, 1)), tf.zeros((96, 1))
         for daily_parking_rate, condition in monthly_parking_rate:
             if condition[0][0] == 1:
                 weekend_total += daily_parking_rate
+                weekends += 1
             else:
                 workday_total += daily_parking_rate
-        weekend_total /= len(monthly_parking_rate)
-        workday_total /= len(monthly_parking_rate)
+                workdays += 1
+        weekend_total /= weekends
+        workday_total /= workdays
         return weekend_total, workday_total
 
 

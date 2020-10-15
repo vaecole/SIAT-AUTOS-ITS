@@ -69,7 +69,7 @@ def get_data(data_path, batch_size=96):
     return monthly_parking_rate
 
 
-def write_data(save_path, g_data, sample_size, cond_dim):
+def write_data(save_path, g_data, sample_size, cond_dim, epoch):
     """
     数据输出到excel
     """
@@ -78,5 +78,5 @@ def write_data(save_path, g_data, sample_size, cond_dim):
         sheet = write_xls.add_sheet('label' + str(p))
         for j in range(sample_size):
             sheet.write(j, 0, str(g_data[p][j]))
-    xls_name = save_path + '/data.xls'
+    xls_name = save_path + '/' + str(epoch) + '.xls'
     write_xls.save(xls_name)
