@@ -145,11 +145,11 @@ class Train:
 
 if __name__ == "__main__":
     # disable GPU
-    # tf.config.set_visible_devices([], 'GPU')
+    tf.config.set_visible_devices([], 'GPU')
 
-    # enable CPU
-    physical_devices = tf.config.list_physical_devices('GPU')
-    tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
+    # enable GPU
+    # physical_devices = tf.config.list_physical_devices('GPU')
+    # tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
 
     # save_path_ = './generated/images1602599186'
     save_path_ = "./generated/%s" % int(time.time())
