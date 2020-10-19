@@ -80,3 +80,5 @@ def write_data(save_path, g_data, sample_size, cond_dim, epoch):
             sheet.write(j, 0, str(g_data[p][j]))
     xls_name = save_path + '/' + str(epoch) + '.xls'
     write_xls.save(xls_name)
+
+# todo: residual analysis

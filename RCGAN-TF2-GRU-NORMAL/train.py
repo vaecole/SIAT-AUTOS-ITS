@@ -4,13 +4,14 @@ import random
 
 from data_process import get_data, write_data
 from model import Generator, Discriminator
-from image_utils import save_images
+from image_utils import save_images, save_images_batch
+from image_utils import sample_noise
 
 import time
 import tensorflow as tf
 import numpy as np
 
-epochs = 800
+epochs = 1000
 batch_size = 96
 save_interval = 5
 
@@ -20,7 +21,7 @@ class Train:
     ...
     """
 
-    def __init__(self):
+    def __init__(self, data_path):
         self.gen_optimizer = tf.keras.optimizers.Adam(0.0002, 0.5)
         self.disc_optimizer = tf.keras.optimizers.Adam(0.0002, 0.5)
         self.generator = Generator()
@@ -28,23 +29,23 @@ class Train:
         self.cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
         self.condition_weekend = np.array([[1, 0]]).repeat(96, axis=0)  # weekend
         self.condition_workday = np.array([[0, 1]]).repeat(96, axis=0)  # workday
+        self.monthly_parking_rate = get_data(data_path)
+        self.seed = sample_noise(96)  # tf.random.normal([96, 1], 0.5, 0.2)
+        self.avg_weekend, self.avg_workday = self.get_average(self.monthly_parking_rate)
 
-    def call(self, data_path, save_path):
+    def __call__(self, save_path):
         """
         ...
         """
         if not os.path.exists(save_path):
             os.makedirs(save_path)
 
-        monthly_parking_rate = get_data(data_path)
-        seed = tf.random.normal([96, 1], 0.5, 0.2)
         time_consumed_total = 0.
-        avg_weekend, avg_workday = self.get_average(monthly_parking_rate)
         for epoch in range(1, epochs + 1):
             start = time.time()
             total_gen_loss = 0
             total_disc_loss = 0
-            for daily_parking_rate, condition in monthly_parking_rate:
+            for daily_parking_rate, condition in self.monthly_parking_rate:
                 gen_loss, disc_loss = self.train_step(daily_parking_rate, condition)
                 total_gen_loss += gen_loss
                 total_disc_loss += disc_loss
@@ -61,37 +62,45 @@ class Train:
                           estimate_time_last))
 
             if epoch % save_interval == 0:
-                save_images(save_path, epoch, self.generator, seed, avg_weekend, avg_workday)
+                save_images(save_path, epoch, self.generator, self.seed, self.avg_weekend, self.avg_workday)
                 if epoch > 199:
-                    gen_data = np.concatenate((np.reshape(self.generator(seed, self.condition_weekend, False),
+                    gen_data = np.concatenate((np.reshape(self.generator(self.seed, self.condition_weekend, False),
                                                           (1, 96)),
-                                               np.reshape(self.generator(seed, self.condition_workday, False),
+                                               np.reshape(self.generator(self.seed, self.condition_workday, False),
                                                           (1, 96))), axis=0)
                     write_data(save_path, gen_data, 96, 2, epoch)
 
-        gen_data = np.concatenate((np.reshape(self.generator(seed, self.condition_weekend, False), (1, 96)),
-                                   np.reshape(self.generator(seed, self.condition_workday, False), (1, 96))), axis=0)
+        gen_data = np.concatenate((np.reshape(self.generator(self.seed, self.condition_weekend, False), (1, 96)),
+                                   np.reshape(self.generator(self.seed, self.condition_workday, False), (1, 96))),
+                                  axis=0)
         write_data(save_path, gen_data, 96, 2, 'final')
         self.generator.save_weights(save_path + '/model_generator_weight')
         self.discriminator.save_weights(save_path + '/model_discriminator_weight')
         print('models saved into path: ' + save_path + ', total time consumed: %s' % time_consumed_total)
 
-    def start_training(self, data_path, save_path, load_model=False):
+    def load_model(self, save_path):
         """
         ...
         """
-        if load_model:
-            self.generator.load_weights(save_path + '/model_generator_weight')
-            self.discriminator.load_weights(save_path + '/model_discriminator_weight')
-            print('models from ' + save_path + ' recovered. ')
-        self.call(data_path, save_path)
+        self.generator.load_weights(save_path + '/model_generator_weight')
+        self.discriminator.load_weights(save_path + '/model_discriminator_weight')
+        print('models from ' + save_path + ' recovered. ')
+
+    def generate(self, save_path, cases=100):
+        """
+        ...
+        """
+        for i in range(cases):
+            seed = sample_noise(96)
+            save_images_batch(save_path, 'batch', self.generator, seed, self.avg_weekend, self.avg_workday,
+                        False, i == cases - 1)
 
     def train_step(self, inputs, condition_):
         """
         ...
         """
         with tf.GradientTape(persistent=True) as tape:
-            noise_ = tf.random.normal([96, 1], 0.5, 0.2)
+            noise_ = sample_noise(96)
             generated_image = self.generator(noise_, condition_)
             real_output = self.discriminator(inputs, condition_)
             generated_output = self.discriminator(generated_image, condition_)
@@ -151,6 +160,9 @@ if __name__ == "__main__":
     # physical_devices = tf.config.list_physical_devices('GPU')
     # tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
 
-    # save_path_ = './generated/images1602599186'
+    # save_path_ = './generated/1602738298_256_cpu'
     save_path_ = "./generated/%s" % int(time.time())
-    Train().start_training('./data', save_path_, load_model=False)
+    train = Train('./data')
+    train(save_path_)
+    # train.load_model(save_path_)
+    train.generate(save_path_)
