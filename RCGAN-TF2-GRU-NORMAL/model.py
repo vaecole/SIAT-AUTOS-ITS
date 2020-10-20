@@ -23,7 +23,7 @@ class Generator(tf.keras.Model, ABC):
 
         self.rnn = tf.keras.layers.GRU(128, return_sequences=True)
 
-        self.final_dense = tf.keras.layers.Dense(1, activation='tanh')
+        self.final_dense = tf.keras.layers.Dense(1, activation='relu')
 
     def call(self, inputs, condition, training=True):
         """

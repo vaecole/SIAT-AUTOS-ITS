@@ -6,7 +6,7 @@ import numpy as np
 import tensorflow as tf
 
 
-def save_images(save_path, epoch, generator, noise, avg_weekend, avg_workday):
+def save_images(save_path, epoch, generator, noise, avg_weekend, avg_workday, show_img=False):
     """
     ...
     """
@@ -30,10 +30,12 @@ def save_images(save_path, epoch, generator, noise, avg_weekend, avg_workday):
     plt.grid(True)
     fig = plt.gcf()
     fig.set_size_inches(15, 8)
-    fig.savefig(save_path + '/%d' % epoch + '.png', dpi=100, bbox_inches='tight')
+    fig.savefig(save_path + '/%s' % epoch + '.png', dpi=100, bbox_inches='tight')
+    if show_img:
+        plt.show()
 
 
-def save_images_batch(save_path, epoch, generator, noise, avg_weekend, avg_workday, clear, save):
+def save_images_batch(save_path, epoch, generator, noise, avg_weekend, avg_workday, save, clear=False):
     """
     ...
     """
