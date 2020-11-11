@@ -156,6 +156,10 @@ class Train:
 
 
 if __name__ == "__main__":
+
+    # todo: this method may be over-fitting, try split into training and testing data to confirm
+    #  (complex models may cause this)
+    
     # disable GPU
     tf.config.set_visible_devices([], 'GPU')
 
