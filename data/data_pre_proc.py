@@ -109,7 +109,7 @@ def get_car_list(name, mon):#返回值为计数值 还要转换为空闲率
     return car_list
 
 '''
-根据停车数据进行绘图，横坐标为每5分钟一个的时间节点，纵坐标为停车场的空车率
+根据停车数据进行绘图，横坐标为每15分钟一个的时间节点，纵坐标为停车场的空车率
 '''
 def get_figure(name, mon, style):
     car_list = get_car_list(name, mon)
