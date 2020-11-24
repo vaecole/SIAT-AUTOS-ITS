@@ -133,4 +133,5 @@ dmypy.json
 .vs/
 
 # app data
-generated/
+*/generated
+*/archive
