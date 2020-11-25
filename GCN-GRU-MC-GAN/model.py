@@ -1,86 +1,96 @@
-# coding=gbk
-from abc import ABC
-
 import tensorflow as tf
-from spektral.layers import GraphConv
+from abc import ABC
+from tensorflow.keras.regularizers import l2
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, Dropout
+from tensorflow.keras.layers import Dropout, GRU, Flatten, Dense, LeakyReLU
+from spektral.layers import GraphConv
 
-class Generator(tf.keras.Model, ABC):
-    """
-    ...
-    """
+l2_reg = 5e-4 / 2  # L2 regularization rate
 
-    def __init__(self, graph_features=11):
+# todo: build compilable models
+#  ref: https://www.activestate.com/blog/how-to-build-a-generative-adversarial-network-gan/
+class Generator(Model, ABC):
+
+    def __init__(self, adj, nodes_features):
         super(Generator, self).__init__()
-        self.gcn = GraphConv(shape=(graph_features, ))
-        self.dense_z = tf.keras.layers.Dense(256, activation='relu')
-        self.dropout_z = tf.keras.layers.Dropout(0.5)
+        self.adj = adj
+        self.nodes_features = nodes_features
 
-        self.dense_y = tf.keras.layers.Dense(256, activation='relu')
-        self.dropout_y = tf.keras.layers.Dropout(0.5)
+        self.dropout = Dropout(0.5)
+        self.flatten = Flatten()
+        self.graph_conv_1 = GraphConv(32,
+                                      activation='elu',
+                                      kernel_regularizer=l2(l2_reg),
+                                      use_bias=False)
+        self.graph_conv_2 = GraphConv(16,
+                                      activation='elu',
+                                      kernel_regularizer=l2(l2_reg),
+                                      use_bias=False)
+        self.dense_1 = Dense(32, activation='relu')
+        self.dense_2 = Dense(64, activation='relu')
+        self.gru = GRU(128, return_sequences=True)
+        self.final_dense = Dense(1, activation='tanh')
 
-        self.combined_dense = tf.keras.layers.Dense(512, activation='relu')
-        self.dropout_x = tf.keras.layers.Dropout(0.5)
+    def call(self, seq, training=True):
+        f = tf.convert_to_tensor(self.nodes_features)  # 11*F
+        g = tf.convert_to_tensor(self.adj)  # 11*11
+        s = tf.convert_to_tensor(seq)  # 96*11
 
-        self.rnn = tf.keras.layers.GRU(128, return_sequences=True)
+        c = self.graph_conv_1([f, g])  # 11*11
+        c = self.graph_conv_2([c, g])  # 11*11
+        s = tf.matmul(s, c)  # 96*11
 
-        self.final_dense = tf.keras.layers.Dense(1, activation='relu')
+        fc = self.dense_1(s)  # 96*32
+        fc = self.dropout(fc, training=training)
+        fc = self.dense_2(fc)  # 96*32
+        fc = self.dropout(fc, training=training)
 
-    def call(self, inputs, condition, training=True):
-        """
-        ...
-        """
-        z = self.dense_z(tf.convert_to_tensor(inputs)) # 96*256
-        z = self.dropout_z(z, training)
-
-        y = self.dense_y(tf.convert_to_tensor(condition)) # 2*256
-        y = self.dropout_y(y, training)
-
-        combined_x = self.combined_dense(tf.concat([z, y], axis=-1)) # 98*256
-        combined_x = self.dropout_x(combined_x, training)
-
-        x = tf.squeeze(self.rnn(tf.expand_dims(combined_x, axis=0)), axis=0) # 98*256
-        return self.final_dense(x)
+        fc = tf.expand_dims(fc, axis=0)  # 1*96*32
+        ro = self.gru(fc)
+        ro = tf.squeeze(ro, axis=0)  # 96*32
+        return self.final_dense(ro)  # 96*1
 
 
-class Discriminator(tf.keras.Model, ABC):
-    """
-    ...
-    """
+class Discriminator(Model, ABC):
 
-    def __init__(self):
+    def __init__(self, adj, nodes_features):
         super(Discriminator, self).__init__()
+        self.adj = adj
+        self.nodes_features = nodes_features
 
-        self.dense_z = tf.keras.layers.Dense(256, activation='relu')
-        self.dropout_z = tf.keras.layers.Dropout(0.5)
+        self.leaky_relu = LeakyReLU(alpha=0.2)
+        self.dropout = Dropout(0.5)
+        self.flatten = Flatten()
+        self.graph_conv_1 = GraphConv(32,
+                                      activation='elu',
+                                      kernel_regularizer=l2(l2_reg),
+                                      use_bias=False)
+        self.graph_conv_2 = GraphConv(16,
+                                      activation='elu',
+                                      kernel_regularizer=l2(l2_reg),
+                                      use_bias=False)
+        self.dense_1 = Dense(32)
+        self.dense_2 = Dense(64)
+        self.gru = GRU(128, return_sequences=True)
+        self.final_dense = Dense(1, activation='sigmoid')
 
-        self.dense_y = tf.keras.layers.Dense(256, activation='relu')
-        self.dropout_y = tf.keras.layers.Dropout(0.5)
+    def call(self, seq, training=True):
+        f = tf.convert_to_tensor(self.nodes_features)  # 11*F
+        g = tf.convert_to_tensor(self.adj)  # 11*11
+        s = tf.convert_to_tensor(seq)  # 96*11
 
-        self.combined_dense = tf.keras.layers.Dense(512, activation='relu')
-        self.dropout_x = tf.keras.layers.Dropout(0.5)
+        c = self.graph_conv_1([f, g])  # 11*11
+        c = self.graph_conv_2([c, g])  # 11*11
+        s = tf.matmul(s, c)  # 96*11
 
-        self.rnn = tf.keras.layers.GRU(128, return_sequences=True)
+        fc = self.dense_1(s)  # 96*32
+        fc = self.leaky_relu(fc)
+        fc = self.dropout(fc, training=training)
+        fc = self.dense_2(fc)  # 96*64
+        fc = self.leaky_relu(fc)
+        fc = self.dropout(fc, training=training)
 
-        self.final_dense = tf.keras.layers.Dense(1, activation='tanh')
-
-    def call(self, inputs, condition, training=True):
-        """
-        ...
-        """
-        z = self.dense_z(tf.convert_to_tensor(inputs))
-        z = self.dropout_z(z, training)
-
-        y = self.dense_y(tf.convert_to_tensor(condition))
-        y = self.dropout_y(y, training)
-
-        combined_x = self.combined_dense(tf.concat([z, y], axis=-1))
-        combined_x = self.dropout_x(combined_x, training)
-
-        x = tf.squeeze(self.rnn(tf.expand_dims(combined_x, axis=0)), axis=0)  # 96*100
-        return self.final_dense(x)
-
-
-if __name__ == "__main__":
-    pass
+        fc = tf.expand_dims(fc, axis=0)
+        ro = self.gru(fc)
+        ro = tf.squeeze(ro, axis=0)  # 96*64
+        return self.final_dense(ro)  # 96*1
