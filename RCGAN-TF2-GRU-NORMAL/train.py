@@ -69,17 +69,11 @@ class Train:
         self.save_model(save_path, time_consumed_total)
 
     def load_model(self, save_path):
-        """
-        ...
-        """
         self.generator.load_weights(save_path + '/model_generator_weight')
         self.discriminator.load_weights(save_path + '/model_discriminator_weight')
         print('models from ' + save_path + ' recovered. ')
 
     def save_model(self, save_path, time_consumed_total):
-        """
-        ...
-        """
         gen_data = np.concatenate(
             (np.reshape(self.generator(self.seed, self.condition_weekend, False), (1, batch_size)),
              np.reshape(self.generator(self.seed, self.condition_workday, False), (1, batch_size))),

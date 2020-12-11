@@ -14,7 +14,7 @@ def get_area(target, max_dis, all_df):
 
 
 # build connection between points near than max_dist
-def build_adj_matrix(area, max_dist=0.4):
+def build_adj_matrix(area, max_dist=0.5):
     adj_matrix = []
     name_key_dict = dict()
     key_name_dict = dict()

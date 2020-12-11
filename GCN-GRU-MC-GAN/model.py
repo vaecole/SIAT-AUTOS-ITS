@@ -2,95 +2,157 @@ import tensorflow as tf
 from abc import ABC
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Dropout, GRU, Flatten, Dense, LeakyReLU
+from tensorflow.keras.layers import Dropout, GRU, Dense, Reshape, Input, Dot, Concatenate
+import tensorflow.keras.layers as layers
 from spektral.layers import GraphConv
+import tensorflow.keras.backend as K
 
 l2_reg = 5e-4 / 2  # L2 regularization rate
 
 # todo: build compilable models
 #  ref: https://www.activestate.com/blog/how-to-build-a-generative-adversarial-network-gan/
+base = 16
+
+
 class Generator(Model, ABC):
 
-    def __init__(self, adj, nodes_features):
+    def __init__(self, adj, nodes_features, use_gcn, dropout):
         super(Generator, self).__init__()
         self.adj = adj
         self.nodes_features = nodes_features
 
-        self.dropout = Dropout(0.5)
-        self.flatten = Flatten()
-        self.graph_conv_1 = GraphConv(32,
-                                      activation='elu',
-                                      kernel_regularizer=l2(l2_reg),
-                                      use_bias=False)
-        self.graph_conv_2 = GraphConv(16,
-                                      activation='elu',
-                                      kernel_regularizer=l2(l2_reg),
-                                      use_bias=False)
-        self.dense_1 = Dense(32, activation='relu')
-        self.dense_2 = Dense(64, activation='relu')
-        self.gru = GRU(128, return_sequences=True)
+        self.dropout = Dropout(dropout)
+        if use_gcn:
+            self.graph_conv_1 = GraphConv(2 * base,
+                                          activation='elu',
+                                          kernel_regularizer=l2(l2_reg),
+                                          use_bias=False)
+            self.graph_conv_2 = GraphConv(base,
+                                          activation='elu',
+                                          kernel_regularizer=l2(l2_reg),
+                                          use_bias=False)
+        else:
+            self.dense_0 = Dense(4 * base, activation='relu')
+
+        self.dense_1 = Dense(4 * base, activation='relu')
+        self.dense_2 = Dense(8 * base, activation='relu')
+        self.gru = GRU(2 * base, return_sequences=True)
         self.final_dense = Dense(1, activation='tanh')
 
-    def call(self, seq, training=True):
-        f = tf.convert_to_tensor(self.nodes_features)  # 11*F
-        g = tf.convert_to_tensor(self.adj)  # 11*11
-        s = tf.convert_to_tensor(seq)  # 96*11
+    def call(self, seq, use_gcn, dropout, training=True):
+        s = tf.convert_to_tensor(seq)  # S*N
 
-        c = self.graph_conv_1([f, g])  # 11*11
-        c = self.graph_conv_2([c, g])  # 11*11
-        s = tf.matmul(s, c)  # 96*11
+        if use_gcn:
+            f = tf.convert_to_tensor(self.nodes_features)  # N*F
+            g = tf.convert_to_tensor(self.adj)  # N*N
+            c = self.graph_conv_1([f, g])  # N*Cov1
+            c = self.graph_conv_2([c, g])  # N*Cov2
+            s = tf.matmul(s, c)  # S*N x N*Cov2
+        else:
+            s = self.dense_0(s)  # S*D1
+            s = self.dropout(s, training=training)
 
-        fc = self.dense_1(s)  # 96*32
+        fc = self.dense_1(s)  # S*D1
         fc = self.dropout(fc, training=training)
-        fc = self.dense_2(fc)  # 96*32
-        fc = self.dropout(fc, training=training)
-
-        fc = tf.expand_dims(fc, axis=0)  # 1*96*32
-        ro = self.gru(fc)
-        ro = tf.squeeze(ro, axis=0)  # 96*32
-        return self.final_dense(ro)  # 96*1
-
-
-class Discriminator(Model, ABC):
-
-    def __init__(self, adj, nodes_features):
-        super(Discriminator, self).__init__()
-        self.adj = adj
-        self.nodes_features = nodes_features
-
-        self.leaky_relu = LeakyReLU(alpha=0.2)
-        self.dropout = Dropout(0.5)
-        self.flatten = Flatten()
-        self.graph_conv_1 = GraphConv(32,
-                                      activation='elu',
-                                      kernel_regularizer=l2(l2_reg),
-                                      use_bias=False)
-        self.graph_conv_2 = GraphConv(16,
-                                      activation='elu',
-                                      kernel_regularizer=l2(l2_reg),
-                                      use_bias=False)
-        self.dense_1 = Dense(32)
-        self.dense_2 = Dense(64)
-        self.gru = GRU(128, return_sequences=True)
-        self.final_dense = Dense(1, activation='sigmoid')
-
-    def call(self, seq, training=True):
-        f = tf.convert_to_tensor(self.nodes_features)  # 11*F
-        g = tf.convert_to_tensor(self.adj)  # 11*11
-        s = tf.convert_to_tensor(seq)  # 96*11
-
-        c = self.graph_conv_1([f, g])  # 11*11
-        c = self.graph_conv_2([c, g])  # 11*11
-        s = tf.matmul(s, c)  # 96*11
-
-        fc = self.dense_1(s)  # 96*32
-        fc = self.leaky_relu(fc)
-        fc = self.dropout(fc, training=training)
-        fc = self.dense_2(fc)  # 96*64
-        fc = self.leaky_relu(fc)
+        fc = self.dense_2(fc)  # S*D2
         fc = self.dropout(fc, training=training)
 
         fc = tf.expand_dims(fc, axis=0)
         ro = self.gru(fc)
-        ro = tf.squeeze(ro, axis=0)  # 96*64
-        return self.final_dense(ro)  # 96*1
+        ro = tf.squeeze(ro, axis=0)  # S*R
+        return self.final_dense(ro)  # S*1
+
+    @staticmethod
+    def make_model(use_gcn, dropout, S, adj, node_f):
+        N = len(adj)
+        input_s = Input(shape=(S, N))
+        input_s1 = None
+        if use_gcn:
+            input_f = K.variable(node_f)
+            input_g = K.variable(adj)
+            gcov1 = GraphConv(2 * base,
+                              activation='elu', kernel_regularizer=l2(l2_reg), use_bias=False)([input_f, input_g])
+            gcov2 = GraphConv(base,
+                              activation='elu', kernel_regularizer=l2(l2_reg), use_bias=False)([gcov1, input_g])
+            # N*Cov2
+            input_s1 = Dot(axes=(2, 1))([input_s, K.expand_dims(gcov2, 0)])
+        else:
+            input_s1 = Dropout(dropout)(Dense(4 * base, activation='relu', input_shape=(N,))(input_s))
+
+        fc1 = Dropout(dropout)(Dense(4 * base, activation='relu', input_shape=(N,))(input_s1))
+        fc2 = Dropout(dropout)(Dense(8 * base, activation='relu', input_shape=(N,))(fc1))
+        # S*D2
+
+        gru = GRU(2 * base, return_sequences=True)(fc2)
+        out = Dense(1, activation='tanh')(gru)
+        return Model(inputs=[input_s], outputs=out)
+
+
+class Discriminator(Model, ABC):
+
+    def __init__(self, adj, nodes_features, use_gcn, dropout):
+        super(Discriminator, self).__init__()
+        self.adj = adj
+        self.nodes_features = nodes_features
+
+        self.dropout = Dropout(dropout)
+        if use_gcn:
+            self.graph_conv_1 = GraphConv(2 * base,
+                                          activation='elu',
+                                          kernel_regularizer=l2(l2_reg),
+                                          use_bias=False)
+            self.graph_conv_2 = GraphConv(base,
+                                          activation='elu',
+                                          kernel_regularizer=l2(l2_reg),
+                                          use_bias=False)
+        else:
+            self.dense_0 = Dense(4 * base, activation='relu')
+
+        self.dense_1 = Dense(4 * base, activation='relu')
+        self.dense_2 = Dense(8 * base, activation='relu')
+        self.gru = GRU(2 * base, return_sequences=True)
+        self.final_dense = Dense(1, activation='tanh')
+
+    def call(self, seq, use_gcn, dropout, training=True):
+        s = tf.convert_to_tensor(seq)  # S*N
+
+        if use_gcn:
+            f = tf.convert_to_tensor(self.nodes_features)  # N*F
+            g = tf.convert_to_tensor(self.adj)  # N*N
+            c = self.graph_conv_1([f, g])  # N*Cov1
+            c = self.graph_conv_2([c, g])  # N*Cov2
+            s = tf.matmul(s, c)  # S*N x N*Cov2
+        else:
+            s = self.dense_0(s)  # S*D1
+            s = self.dropout(s, training=training)
+
+        fc = self.dense_1(s)  # S*D1
+        fc = self.dropout(fc, training=training)
+        fc = self.dense_2(fc)  # S*D2
+        fc = self.dropout(fc, training=training)
+
+        fc = tf.expand_dims(fc, axis=0)
+        ro = self.gru(fc)
+        ro = tf.squeeze(ro, axis=0)  # S*R
+        return self.final_dense(ro)  # S*1
+
+    @staticmethod
+    def make_model(use_gcn, dropout, N):
+        model = tf.keras.Sequential()
+        if use_gcn:
+            model.add(GraphConv(2 * base, activation='elu', kernel_regularizer=l2(l2_reg), use_bias=False),
+                      input_shape=(N,))  # N*Cov1
+            model.add(GraphConv(base, activation='elu', kernel_regularizer=l2(l2_reg), use_bias=False))
+            model.add(layers.Dot(input_shape=(N,)))
+        else:
+            model.add(Dense(4 * base, activation='relu', input_shape=(N,)))
+            model.add(Dropout(dropout))
+        model.add(Dense(4 * base, activation='relu'))
+        model.add(Dropout(dropout))
+        model.add(Dense(8 * base, activation='relu'))
+        model.add(Dropout(dropout))
+        model.add(Reshape((1, N, -1)))
+        model.add(GRU(2 * base, return_sequences=True))
+        model.add(Reshape((N, -1)))
+        model.add(Dense(1, activation='tanh'))
+        return model
