@@ -1,7 +1,7 @@
 import os
 from tensorflow.keras.optimizers import Adam
 from spektral.utils import normalized_laplacian
-from model import Generator, Discriminator
+import model
 import time
 import tensorflow as tf
 import numpy as np
@@ -13,7 +13,7 @@ batch_size = 96 * 7
 lr = 0.0001
 adam_beta_1 = 0.5
 save_week_interval = 10
-save_all_interval = 100
+save_all_interval = 50
 dropout = 0.5
 alpha = 0.2
 
@@ -22,15 +22,21 @@ class Train:
     def __init__(self, seqs, adj, nodes_features, epochs, key, use_gcn):
         self.epochs = epochs
         self.seqs = seqs.astype('float32')
+        self.seqs_noised = seqs.copy().astype('float32')
+        max_s = seqs[key].max()
+        self.seqs_noised[key] = np.random.normal(max_s / 2.0, max_s / 10.0, size=(seqs.shape[0])).astype('float32')
         self.key = key
 
         self.gen_optimizer = Adam(lr, adam_beta_1)
         self.desc_optimizer = Adam(lr, adam_beta_1)
 
         self.adj = normalized_laplacian(adj.astype('float32'))
+        self.adj_expanded = tf.expand_dims(normalized_laplacian(adj.astype('float32')), axis=0)
         self.nodes_features = nodes_features.astype('float32')
-        self.generator = Generator.make_model(use_gcn, dropout, batch_size, self.adj, self.nodes_features)
-        self.discriminator = Generator.make_model(use_gcn, dropout, batch_size, self.adj, self.nodes_features)
+        self.nodes_f_expanded = tf.expand_dims(nodes_features.astype('float32'), axis=0)
+        self.generator = model.make_model('generator', use_gcn, dropout, batch_size, self.adj, self.nodes_features)
+        self.discriminator = model.make_model('discriminator', use_gcn, dropout, batch_size, self.adj,
+                                              self.nodes_features)
         self.cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
     def __call__(self, epochs=None, save_path='generated/'):
@@ -40,7 +46,6 @@ class Train:
             epochs = self.epochs
 
         time_len = self.seqs.shape[0]
-        num_nodes = self.seqs.shape[1]
         total_batch = int(time_len / batch_size)  # 2976/96=31
 
         time_consumed_total = 0.
@@ -51,12 +56,12 @@ class Train:
 
             for week in range(0, total_batch):
                 current_seqs = self.seqs[week * batch_size:week * batch_size + batch_size]
-                seqs_noised = current_seqs.copy()
+                seqs_noised = self.seqs_noised[week * batch_size:week * batch_size + batch_size]
                 max_s = current_seqs[self.key].max()
                 seqs_noised[self.key] = np.random.normal(max_s / 2.0, max_s / 10.0,
                                                          size=(current_seqs.shape[0])).astype('float32')
-                # current_seqs.plot(figsize=(20,5))
-                # seqs_noised.plot(figsize=(20,5))
+                # current_seqs.plot(figsize=(20, 5))
+                # seqs_noised.plot(figsize=(20, 5))
                 gen_loss, disc_loss = self.train_step(current_seqs, seqs_noised)
                 total_gen_loss += gen_loss
                 total_disc_loss += disc_loss
@@ -82,12 +87,12 @@ class Train:
     @tf.function
     def train_step(self, seqs, seqs_noised):
         with tf.GradientTape(persistent=True) as tape:
-            real_output = tf.squeeze(self.discriminator(tf.expand_dims(seqs, axis=0)), axis=0)  # 评价高
-            generated = tf.squeeze(self.generator(tf.expand_dims(seqs_noised, axis=0)), axis=0)
+            real_output = self.call_model(self.discriminator, seqs)  # 评价高
+            generated = self.call_model(self.generator, seqs_noised)
             left = tf.slice(seqs, [0, 0], [batch_size, self.key])
             right = tf.slice(seqs, [0, self.key + 1], [batch_size, -1])
-            combined = tf.concat([left, generated, right], 1)
-            generated_output = tf.squeeze(self.discriminator(tf.expand_dims(combined, axis=0)), axis=0)  # 初始评价低
+            combined = tf.concat([left, generated[0], right], 1)
+            generated_output = self.call_model(self.discriminator, combined)  # 初始评价低
 
             loss_g = self.generator_loss(self.cross_entropy, generated_output)
             loss_d = self.discriminator_loss(self.cross_entropy, real_output, generated_output)
@@ -99,6 +104,9 @@ class Train:
         self.desc_optimizer.apply_gradients(zip(grad_disc, self.discriminator.trainable_variables))
 
         return loss_g, loss_d
+
+    def call_model(self, model, seqs):
+        return model(inputs=[tf.expand_dims(seqs, axis=0), self.nodes_f_expanded, self.adj_expanded])
 
     def generate(self, real_seqs):
         seqs_replace = real_seqs.copy()
@@ -124,14 +132,11 @@ class Train:
         fig.set_figheight(8)
         fig.set_figwidth(20)
         real_seqs = self.seqs[start_day:start_day + batch_size * week]
-        generated_seqs = []
-        for w in range(week):
-            generated_seq = self.generate(real_seqs[start_day * w:start_day * w + batch_size])
-            if len(generated_seqs) == 0:
-                generated_seqs = generated_seq
-            else:
-                generated_seqs = generated_seqs.append(generated_seq, ignore_index=True)
-        generated_seqs = utils.max_min_scale(generated_seqs)
+        noise_seq = self.seqs_noised[start_day:start_day + batch_size * week]
+        generated_seqs = np.concatenate(
+            [self.call_model(self.generator, noise_seq[start_day * w:start_day * w + batch_size]).numpy()[0]
+             for w in range(week)])
+        generated_seqs = utils.max_min_scale(pd.DataFrame(generated_seqs))
         all_seqs = pd.concat([pd.DataFrame(real_seqs[self.key].values), generated_seqs], axis=1)
         all_seqs.plot(ax=ax)
         n = 2
@@ -190,6 +195,6 @@ if __name__ == "__main__":
     # physical_devices = tf.config.list_physical_devices('GPU')
     # tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
 
-    train1 = start_train(10000, True, '宝琳珠宝交易中心', '2016-07-26', '2016-09-06')
-    train2 = start_train(10000, False, '宝琳珠宝交易中心', '2016-07-26', '2016-09-06')
+    train1 = start_train(8000, True, '宝琳珠宝交易中心', '2016-07-26', '2016-09-06')
+    train2 = start_train(8000, False, '宝琳珠宝交易中心', '2016-07-26', '2016-09-06')
     # resume_train('./generated/1602738298_256_cpu')

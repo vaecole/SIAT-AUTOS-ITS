@@ -5,13 +5,33 @@ from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Dropout, GRU, Dense, Reshape, Input, Dot, Concatenate
 import tensorflow.keras.layers as layers
 from spektral.layers import GraphConv
-import tensorflow.keras.backend as K
 
 l2_reg = 5e-4 / 2  # L2 regularization rate
-
-# todo: build compilable models
-#  ref: https://www.activestate.com/blog/how-to-build-a-generative-adversarial-network-gan/
 base = 16
+
+
+def make_model(name, use_gcn, dropout, S, adj, node_f):
+    N = len(adj)
+    input_s = Input(shape=(S, N))
+    input_f = Input(shape=(N, node_f.shape[1]))
+    input_g = Input(shape=(N, N))
+    if use_gcn:
+        gcov1 = GraphConv(2 * base,
+                          activation='elu', kernel_regularizer=l2(l2_reg), use_bias=False)([input_f, input_g])
+        gcov2 = GraphConv(base,
+                          activation='elu', kernel_regularizer=l2(l2_reg), use_bias=False)([gcov1, input_g])
+        # N*Cov2
+        input_s1 = Dot(axes=(2, 1))([input_s, gcov2])
+    else:
+        input_s1 = Dropout(dropout)(Dense(4 * base, activation='relu', input_shape=(N,))(input_s))
+
+    fc1 = Dropout(dropout)(Dense(4 * base, activation='relu', input_shape=(N,))(input_s1))
+    fc2 = Dropout(dropout)(Dense(8 * base, activation='relu', input_shape=(N,))(fc1))
+    # S*D2
+
+    gru = GRU(2 * base, return_sequences=True)(fc2)
+    out = Dense(1, activation='tanh')(gru)
+    return Model(name=name, inputs=[input_s, input_f, input_g], outputs=out)
 
 
 class Generator(Model, ABC):
@@ -61,31 +81,6 @@ class Generator(Model, ABC):
         ro = self.gru(fc)
         ro = tf.squeeze(ro, axis=0)  # S*R
         return self.final_dense(ro)  # S*1
-
-    @staticmethod
-    def make_model(use_gcn, dropout, S, adj, node_f):
-        N = len(adj)
-        input_s = Input(shape=(S, N))
-        input_s1 = None
-        if use_gcn:
-            input_f = K.variable(node_f)
-            input_g = K.variable(adj)
-            gcov1 = GraphConv(2 * base,
-                              activation='elu', kernel_regularizer=l2(l2_reg), use_bias=False)([input_f, input_g])
-            gcov2 = GraphConv(base,
-                              activation='elu', kernel_regularizer=l2(l2_reg), use_bias=False)([gcov1, input_g])
-            # N*Cov2
-            input_s1 = Dot(axes=(2, 1))([input_s, K.expand_dims(gcov2, 0)])
-        else:
-            input_s1 = Dropout(dropout)(Dense(4 * base, activation='relu', input_shape=(N,))(input_s))
-
-        fc1 = Dropout(dropout)(Dense(4 * base, activation='relu', input_shape=(N,))(input_s1))
-        fc2 = Dropout(dropout)(Dense(8 * base, activation='relu', input_shape=(N,))(fc1))
-        # S*D2
-
-        gru = GRU(2 * base, return_sequences=True)(fc2)
-        out = Dense(1, activation='tanh')(gru)
-        return Model(inputs=[input_s], outputs=out)
 
 
 class Discriminator(Model, ABC):
