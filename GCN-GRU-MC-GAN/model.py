@@ -18,7 +18,7 @@ def make_model(name, use_gcn, dropout, S, adj, node_f):
     if use_gcn:
         gcov1 = GraphConv(2 * base,
                           activation='elu', kernel_regularizer=l2(l2_reg), use_bias=False)([input_f, input_g])
-        gcov2 = GraphConv(base,
+        gcov2 = GraphConv(2 * base,
                           activation='elu', kernel_regularizer=l2(l2_reg), use_bias=False)([gcov1, input_g])
         # N*Cov2
         input_s1 = Dot(axes=(2, 1))([input_s, gcov2])

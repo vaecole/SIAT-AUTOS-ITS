@@ -9,17 +9,16 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import utils
 
-batch_size = 96 * 7
 lr = 0.0001
 adam_beta_1 = 0.5
-save_week_interval = 10
-save_all_interval = 50
+save_week_interval = 5
+save_all_interval = 20
 dropout = 0.5
 alpha = 0.2
 
 
 class Train:
-    def __init__(self, seqs, adj, nodes_features, epochs, key, use_gcn):
+    def __init__(self, seqs, adj, nodes_features, epochs, key, use_gcn, batch_size):
         self.epochs = epochs
         self.seqs = seqs.astype('float32')
         self.seqs_noised = seqs.copy().astype('float32')
@@ -39,7 +38,7 @@ class Train:
                                               self.nodes_features)
         self.cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 
-    def __call__(self, epochs=None, save_path='generated/'):
+    def __call__(self, epochs=None, save_path='generated/', batch_size=96):
         if not os.path.exists(save_path):
             os.makedirs(save_path)
         if epochs is None:
@@ -62,7 +61,7 @@ class Train:
                                                          size=(current_seqs.shape[0])).astype('float32')
                 # current_seqs.plot(figsize=(20, 5))
                 # seqs_noised.plot(figsize=(20, 5))
-                gen_loss, disc_loss = self.train_step(current_seqs, seqs_noised)
+                gen_loss, disc_loss = self.train_step(current_seqs, seqs_noised, batch_size)
                 total_gen_loss += gen_loss
                 total_disc_loss += disc_loss
 
@@ -79,13 +78,13 @@ class Train:
                           round(estimate_time_last, 2)))
 
             if epoch % save_week_interval == 0:
-                self.compare_plot('week_' + str(epoch), save_path, int(total_batch / 2) * 7)
+                self.compare_plot('week_' + str(epoch), save_path, int(total_batch / 2) * 7, 1, batch_size)
             if epoch % save_all_interval == 0:
-                self.compare_plot('all_' + str(epoch), save_path, 0, total_batch)
+                self.compare_plot('all_' + str(epoch), save_path, 0, total_batch, batch_size)
         self.save_model(save_path, time_consumed_total)
 
     @tf.function
-    def train_step(self, seqs, seqs_noised):
+    def train_step(self, seqs, seqs_noised, batch_size):
         with tf.GradientTape(persistent=True) as tape:
             real_output = self.call_model(self.discriminator, seqs)  # 评价高
             generated = self.call_model(self.generator, seqs_noised)
@@ -127,7 +126,7 @@ class Train:
     def generator_loss(loss_object, fake_output):
         return loss_object(tf.ones_like(fake_output), fake_output)
 
-    def compare_plot(self, name, save_path, start_day=0, week=1):
+    def compare_plot(self, name, save_path, start_day=0, week=1, batch_size=96):
         fig, ax = plt.subplots()
         fig.set_figheight(8)
         fig.set_figwidth(20)
@@ -136,8 +135,8 @@ class Train:
         generated_seqs = np.concatenate(
             [self.call_model(self.generator, noise_seq[start_day * w:start_day * w + batch_size]).numpy()[0]
              for w in range(week)])
-        generated_seqs = utils.max_min_scale(pd.DataFrame(generated_seqs))
-        all_seqs = pd.concat([pd.DataFrame(real_seqs[self.key].values), generated_seqs], axis=1)
+        # generated_seqs = utils.max_min_scale(pd.DataFrame(generated_seqs))
+        all_seqs = pd.concat([pd.DataFrame(real_seqs[self.key].values), pd.DataFrame(generated_seqs)], axis=1)
         all_seqs.plot(ax=ax)
         n = 2
         ax.legend(['real' + str(w) for w in range(1, n)] + ['gen' + str(w) for w in range(1, n)]);
@@ -161,33 +160,55 @@ class Train:
         print('models saved into path: ' + save_path + ', total time consumed: %s' % time_consumed_total)
 
 
-def start_train(epochs=10000, use_gcn=True, target_park='宝琳珠宝交易中心', start='2016-06-02', end='2016-07-07'):
-    seqs_normal, adj, node_f, key = utils.init_data(target_park, start, end)
-    # seqs_normal[key].plot(figsize=(20,10))
-    name = target_park + '_GCN_' + str(use_gcn)
-    print('Start ' + name, seqs_normal.shape, key)
-    train = Train(seqs_normal, adj, node_f, epochs, key, use_gcn)
-    print(train.generator.summary())
+def start_train(epochs=10000, use_gcn=True, target_park='宝琳珠宝交易中心', start='2016-06-02', end='2016-07-07',
+                graph_nodes_max_dis=0.5):
+    print('Starting ' + target_park)
+    seqs_normal, adj, node_f, nks = utils.init_data(target_park, start, end, graph_nodes_max_dis)
+    batch_size = 96*7*8
+    seqs_normal = seqs_normal.take(range(batch_size))
+    name = target_park + '_' + str(use_gcn) + '_' + str(len(adj)) + '_' + str(len(seqs_normal)) + '_'
     save_path = 'generated/' + str(epochs) + name + str(time.time())
-    train(epochs, save_path)
-    print('Finished ' + name)
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+    fig, ax = plt.subplots()
+    fig.set_figheight(20)
+    fig.set_figwidth(50)
+    seqs_normal.plot(ax=ax)
+    fig.savefig(save_path + '/raw_' + '_'.join(nks.keys()) + '_target.png')
+    train = Train(seqs_normal, adj, node_f, epochs, nks[target_park], use_gcn, batch_size)
+    print(train.generator.summary())
+    train(epochs, save_path, batch_size)
     return train
 
 
-def resume_train(model_path, epochs=10000, use_gcn=True, target_park='宝琳珠宝交易中心',
-                 start='2016-06-02', end='2016-07-07'):
-    seqs_normal, adj, node_f, key = utils.init_data(target_park, start, end)
-    # seqs_normal[key].plot(figsize=(20,10))
-    name = target_park + '_GCN_' + str(use_gcn)
-    print('Start ' + name, seqs_normal.shape, key)
-    train = Train(seqs_normal, adj, node_f, epochs, key)
-    train.load_model(model_path)
-    train(epochs, model_path)
-    print('Finished ' + name)
+def search_data_pattern(epochs=10000, use_gcn=True, start='2016-01-02', end='2017-01-02', graph_nodes_max_dis=0.5):
+    sites = utils.init_data_for_search(start, end, graph_nodes_max_dis)
+    for site in sites:
+        # seqs_normal[key].plot(figsize=(20,10))
+        name = site[0] + '_GCN_' + str(use_gcn) + '_' + str(len(site[2])) + '_'
+        print('Start ' + name, site[1].shape, site[-1])
+        train = Train(site[1], site[2], site[3], epochs, site[-1], use_gcn)
+        save_path = 'generated/' + str(epochs) + name + str(time.time())
+        train(epochs, save_path)
+        print('Finished ' + name)
     return train
 
 
 if __name__ == "__main__":
+
+# '翠景山庄', '东翠花园', '都市名园', '都心名苑', '丰园酒店', '桂龙家园', '红围坊停车场', '洪涛大厦', '华瑞大厦',
+#              '化工大厦', '天元大厦', '同乐大厦', '万达丰大厦',
+#     sites = ['万山珠宝工业园', '文锦广场', '新白马', '银都大厦',
+#              '永新商业城', '武警生活区银龙花园', '中深石化大厦', '中信星光明庭管理处']
+    # sites = ['都市名园', '翠景山庄', '华瑞大厦', '同乐大厦', '新白马', '银都大厦', '万山珠宝工业园', '桂龙家园']
+# '东翠花园', '都心名苑', '丰园酒店', '红围坊停车场', '洪涛大厦', '化工大厦', '天元大厦', '万达丰大厦',
+#              '文锦广场', '永新商业城', '武警生活区银龙花园', '中深石化大厦', '中信星光明庭管理处',
+    sites = ['都市名园',
+             '翠景山庄', '华瑞大厦', '同乐大厦', '新白马', '银都大厦', '万山珠宝工业园', '桂龙家园']
+    for site in sites:
+        start_train(300, True, site, '2016-01-02', '2017-01-02')
+
+    # search_data_pattern(epochs=200, graph_nodes_max_dis=0.5)
     # disable GPU
     # tf.config.set_visible_devices([], 'GPU')
 
@@ -195,6 +216,7 @@ if __name__ == "__main__":
     # physical_devices = tf.config.list_physical_devices('GPU')
     # tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
 
-    train1 = start_train(8000, True, '宝琳珠宝交易中心', '2016-07-26', '2016-09-06')
-    train2 = start_train(8000, False, '宝琳珠宝交易中心', '2016-07-26', '2016-09-06')
+    # train1 = start_train(5000, False, '宝琳珠宝交易中心', '2016-07-26', '2016-09-06', 0.1)
+    # train2 = start_train(5000, True, '宝琳珠宝交易中心', '2016-07-26', '2016-09-06')
+    # train3 = start_train(5000, False, '宝琳珠宝交易中心', '2016-07-26', '2016-09-06')
     # resume_train('./generated/1602738298_256_cpu')
