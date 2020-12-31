@@ -60,16 +60,16 @@ def max_min_scale(raw):
     return raw
 
 
-def init_data(target_park='宝琳珠宝交易中心', start='2016-06-02', end='2016-07-07', graph_nodes_max_dis=0.5):
+def init_data(target_park='宝琳珠宝交易中心', start='2016-01-02', end='2017-01-02', graph_nodes_max_dis=0.5):
     basic_info_df = pd.read_csv('generated/data/parkings_info.csv')
     basic_info_df['lat_long'] = list(zip(basic_info_df['latitude'], basic_info_df['longitude']))
-    target_area, adj, target_map, nks, kns = build_graph(basic_info_df, target_park, max_dis=graph_nodes_max_dis)
+    target_area, adj, target_map, nks, kns, conns = build_graph(basic_info_df, target_park, max_dis=graph_nodes_max_dis)
     # target_park_basic_info = basic_info_df.loc[basic_info_df.parking_name == target_park].iloc[0]
     node_f = get_nodes_features(target_area)
     seqs_raw = build_area_seqs(target_area, nks, start, end)
     seqs_normal = seqs_raw.fillna(0)
     seqs_normal = max_min_scale(seqs_normal)
-    return seqs_normal, adj, node_f, nks
+    return seqs_normal, adj, node_f, nks, conns, target_map
 
 
 import matplotlib.pyplot as plt
@@ -84,7 +84,7 @@ def init_data_for_search(start='2016-01-02', end='2017-01-02', graph_nodes_max_d
         fig.set_figheight(8)
         fig.set_figwidth(20)
         print('searching ' + target_park)
-        target_area, adj, target_map, nks, kns = build_graph(basic_info_df, target_park, graph_nodes_max_dis)
+        target_area, adj, target_map, nks, kns, conns = build_graph(basic_info_df, target_park, graph_nodes_max_dis)
         print(nks)
         key = nks[target_park]
         node_f = get_nodes_features(target_area)
@@ -92,7 +92,7 @@ def init_data_for_search(start='2016-01-02', end='2017-01-02', graph_nodes_max_d
             seqs_raw = build_area_seqs(target_area, nks, start, end)
             seqs_normal = seqs_raw.fillna(0)
             seqs_normal = max_min_scale(seqs_normal)
-            result.append([target_park, seqs_normal, adj, node_f, key])
+            result.append([conns, target_park, seqs_normal, adj, node_f, key])
             seqs_normal[key].plot(ax=ax)
             fig.savefig("generated/data/raw_" + target_park + "_target.png")
             plt.close()

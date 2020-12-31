@@ -163,11 +163,12 @@ class Train:
 def start_train(epochs=10000, use_gcn=True, target_park='宝琳珠宝交易中心', start='2016-06-02', end='2016-07-07',
                 graph_nodes_max_dis=0.5):
     print('Starting ' + target_park)
-    seqs_normal, adj, node_f, nks = utils.init_data(target_park, start, end, graph_nodes_max_dis)
-    batch_size = 96*7*8
-    seqs_normal = seqs_normal.take(range(batch_size))
+    seqs_normal, adj, node_f, nks, conns, _ = utils.init_data(target_park, start, end, graph_nodes_max_dis)
+    take = 96*7*8
+    batch_size = 96*7
+    seqs_normal = seqs_normal.take(range(take))
     name = target_park + '_' + str(use_gcn) + '_' + str(len(adj)) + '_' + str(len(seqs_normal)) + '_'
-    save_path = 'generated/' + str(epochs) + name + str(time.time())
+    save_path = 'generated/week_dist/' + str(epochs) + name + str(time.time())
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     fig, ax = plt.subplots()
@@ -175,6 +176,7 @@ def start_train(epochs=10000, use_gcn=True, target_park='宝琳珠宝交易中�
     fig.set_figwidth(50)
     seqs_normal.plot(ax=ax)
     fig.savefig(save_path + '/raw_' + '_'.join(nks.keys()) + '_target.png')
+    plt.close()
     train = Train(seqs_normal, adj, node_f, epochs, nks[target_park], use_gcn, batch_size)
     print(train.generator.summary())
     train(epochs, save_path, batch_size)
@@ -201,12 +203,12 @@ if __name__ == "__main__":
 #     sites = ['万山珠宝工业园', '文锦广场', '新白马', '银都大厦',
 #              '永新商业城', '武警生活区银龙花园', '中深石化大厦', '中信星光明庭管理处']
     # sites = ['都市名园', '翠景山庄', '华瑞大厦', '同乐大厦', '新白马', '银都大厦', '万山珠宝工业园', '桂龙家园']
-# '东翠花园', '都心名苑', '丰园酒店', '红围坊停车场', '洪涛大厦', '化工大厦', '天元大厦', '万达丰大厦',
-#              '文锦广场', '永新商业城', '武警生活区银龙花园', '中深石化大厦', '中信星光明庭管理处',
-    sites = ['都市名园',
+    sites = ['东翠花园', '都心名苑', '丰园酒店', '红围坊停车场', '洪涛大厦', '化工大厦', '天元大厦', '万达丰大厦',
+             '文锦广场', '永新商业城', '武警生活区银龙花园', '中深石化大厦', '中信星光明庭管理处', '都市名园',
              '翠景山庄', '华瑞大厦', '同乐大厦', '新白马', '银都大厦', '万山珠宝工业园', '桂龙家园']
+    # for epochs in ():
     for site in sites:
-        start_train(300, True, site, '2016-01-02', '2017-01-02')
+        start_train(1000, True, site, '2016-01-02', '2017-01-02')
 
     # search_data_pattern(epochs=200, graph_nodes_max_dis=0.5)
     # disable GPU
