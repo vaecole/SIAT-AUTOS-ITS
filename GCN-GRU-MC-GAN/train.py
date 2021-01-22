@@ -206,6 +206,8 @@ if __name__ == "__main__":
     sites = ['东翠花园', '都心名苑', '丰园酒店', '红围坊停车场', '洪涛大厦', '化工大厦', '天元大厦', '万达丰大厦',
              '文锦广场', '永新商业城', '武警生活区银龙花园', '中深石化大厦', '中信星光明庭管理处', '都市名园',
              '翠景山庄', '华瑞大厦', '同乐大厦', '新白马', '银都大厦', '万山珠宝工业园', '桂龙家园']
+
+    # todo: build some baseline code to compare performances, build metrics to measure our advancements
     # for epochs in ():
     for site in sites:
         start_train(1000, True, site, '2016-01-02', '2017-01-02')
