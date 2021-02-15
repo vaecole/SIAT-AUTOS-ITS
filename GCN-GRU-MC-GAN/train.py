@@ -13,8 +13,10 @@ import metrics
 
 lr = 0.0001
 adam_beta_1 = 0.5
-save_week_interval = 5
-save_all_interval = 20
+EPOCHS = 10000
+log_interval = EPOCHS / 10
+save_all_interval = EPOCHS / 20
+
 alpha = 0.2
 
 
@@ -71,15 +73,15 @@ class Train:
             time_consumed_agv = time_consumed_total / epoch
             epochs_last = epochs - epoch
             estimate_time_last = epochs_last * time_consumed_agv
-            print('epoch {}({})/{}({}) - gen_loss = {}, disc_loss = {}, estimated to finish: {}'
-                  .format(epoch, round(time.time() - start, 2),
-                          epochs, round(time_consumed_total, 2),
-                          round(float(total_gen_loss / total_batch), 5),
-                          round(float(total_disc_loss / total_batch), 5),
-                          round(estimate_time_last, 2)))
+            if epoch % log_interval == 0:
+                print('epoch {}/{}({}) - gen_loss = {}, disc_loss = {}, estimated to finish: {}'
+                      .format(epoch, epochs, round(time_consumed_total, 2),
+                              round(float(total_gen_loss / total_batch), 5),
+                              round(float(total_disc_loss / total_batch), 5),
+                              round(estimate_time_last, 2)))
 
-            if epoch % save_week_interval == 0:
-                self.compare_plot('week_' + str(epoch), save_path, int(total_batch / 2) * 7, 1, batch_size)
+            # if epoch % save_week_interval == 0:
+            #     self.compare_plot('week_' + str(epoch), save_path, int(total_batch / 2) * 7, 1, batch_size)
             if epoch % save_all_interval == 0:
                 self.compare_plot('all_' + str(epoch), save_path, 0, total_batch, batch_size)
         self.save_model(save_path, time_consumed_total)
@@ -159,13 +161,11 @@ class Train:
         start_day = int(total_batch / 2) * 7
         week = 1
         real, generated = self.get_compare(start_day, week, batch_size)
-        wsst_dist_week = metrics.get_wasserstein_distance(real.reshape(1, -1)[0], generated.reshape(1, -1)[0])
+        # wsst_dist_week = metrics.get_wasserstein_distance(real.reshape(1, -1)[0], generated.reshape(1, -1)[0])
         start_day = 0
         week = total_batch
         real, generated = self.get_compare(start_day, week, batch_size)
-        wsst_dist_all = metrics.get_wasserstein_distance(real.reshape(1, -1)[0], generated.reshape(1, -1)[0])
-        print("wsst_dist_week", wsst_dist_week, "wsst_dist_all", wsst_dist_all)
-        return wsst_dist_week, wsst_dist_all
+        return metrics.get_common_metrics(real.reshape(1, -1)[0], generated.reshape(1, -1)[0])
 
     def try_restore(self, base_path):
         dirs = os.listdir(base_path)
@@ -193,20 +193,24 @@ class Train:
 
 def start_train(epochs=10000, target_park='宝琳珠宝交易中心', start='2016-01-02', end='2017-01-02'):
     seqs_normal, adj, node_f, nks, conns, _ = utils.init_data(target_park, start, end)
-    take = 96 * 7 * 8
-    batch_size = 96 * 7
-    seqs_normal = seqs_normal.take(range(take))
+    batch_size = 96 * 7 * 4
+    seqs_normal = seqs_normal.take(range(96 * 7 * 2, 96 * 7 * 6))
     use_gru_bag = [True, False]
     use_gcn_bag = [True, False]
     trains = []
 
     for (use_gcn, use_gru) in itertools.product(use_gcn_bag, use_gru_bag):
-        name = target_park + str(epochs) + '_' + str(use_gcn) + '_' + str(len(adj)) + '_' + str(
-            len(seqs_normal)) + '_' + str(use_gru)
+        # if use_gcn and not use_gru:
+        #     continue
+
+        root_path = 'generated/4weeks_gpu/'
+        name = target_park + '_GCN-' + str(use_gcn) + '_GRU-' + str(use_gru)
         print('Starting ' + name)
-        site_path = 'generated/week_dist/' + name
+        site_path = root_path + name
         if not os.path.exists(site_path):
             os.makedirs(site_path)
+        else:
+            continue
         # plot_site(nks, seqs_normal, site_path, target_park)
         train = Train(seqs_normal, adj, node_f, epochs, nks[target_park], use_gcn, batch_size, use_gru)
         # print(train.generator.summary())
@@ -214,12 +218,12 @@ def start_train(epochs=10000, target_park='宝琳珠宝交易中心', start='201
         save_path = site_path + '/' + str(start)
         os.makedirs(save_path)
         train_time_consumed = train(epochs, save_path, batch_size)
-        metrics.write_metrics({name + '_train_time_consumed': round(train_time_consumed, 2)})
+        metrics.write_metrics(root_path, {name + '_train_time_consumed': round(train_time_consumed, 2)}, '_time')
 
         # evaluation
-        wsst_dist_week, wsst_dist_all = train.evaluate(site_path, batch_size)
-        metrics.write_metrics({name + '_wsst_dist_week': round(wsst_dist_week, 5),
-                               name + '_wsst_dist_all': round(wsst_dist_all, 5)})
+        metrics_ = train.evaluate(site_path, batch_size)
+        metrics_['name'] = name
+        metrics.write_metrics(root_path, metrics_)
 
         trains.append(train)
     return trains
@@ -238,15 +242,13 @@ def plot_site(nks, seqs_normal, site_path, target_park):
 
 if __name__ == "__main__":
     # disable GPU
-    tf.config.set_visible_devices([], 'GPU')
+    # tf.config.set_visible_devices([], 'GPU')
 
     # enable GPU
-    # physical_devices = tf.config.list_physical_devices('GPU')
-    # tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
-
-    sites = ['东翠花园', '都心名苑', '丰园酒店', '红围坊停车场', '化工大厦', '天元大厦', '万达丰大厦',
-             '文锦广场', '永新商业城', '武警生活区银龙花园', '中深石化大厦', '中信星光明庭管理处', '都市名园',
-             '翠景山庄', '华瑞大厦', '同乐大厦', '新白马', '银都大厦', '万山珠宝工业园', '桂龙家园']
+    physical_devices = tf.config.list_physical_devices('GPU')
+    tf.config.experimental.set_memory_growth(physical_devices[0], enable=True)
+    # invalid: to many neighbors: '都心名苑', '新白马', '丰园酒店', '红围坊停车场', '天元大厦', '同乐大厦', '万达丰大厦', '文锦广场', '银都大厦', '永新商业城', '中信星光明庭管理处',
+    sites = ['东翠花园', '化工大厦', '武警生活区银龙花园', '中深石化大厦', '都市名园', '翠景山庄', '华瑞大厦', '万山珠宝工业园', '桂龙家园']
 
     for site in sites:
-        start_train(1000, site)
+        start_train(EPOCHS, site)
