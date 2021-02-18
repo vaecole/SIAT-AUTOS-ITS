@@ -109,3 +109,15 @@ def init_data_for_search(start='2016-01-02', end='2017-01-02', graph_nodes_max_d
             print(ae)
             continue
     return result
+
+
+def compare_plot(name, save_path, real, generated):
+    fig, ax = plt.subplots()
+    fig.set_figheight(8)
+    fig.set_figwidth(20)
+    all_seqs = pd.concat([pd.DataFrame(real), pd.DataFrame(generated)], axis=1)
+    all_seqs.plot(ax=ax)
+    n = 2
+    ax.legend(['real' + str(w) for w in range(1, n)] + ['gen' + str(w) for w in range(1, n)]);
+    fig.savefig(save_path + "/compare_" + str(name) + ".png")
+    plt.close()
