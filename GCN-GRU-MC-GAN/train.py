@@ -15,13 +15,13 @@ import pandas as pd
 import utils
 import metrics
 
-EPOCHS = 5000
+EPOCHS = 2000
 total_weeks = 5
 fix_weeks = 5
 use_gpu = True
 root_path = 'generated/' + str(total_weeks) + 'weeks' + ('_gpu' if use_gpu else '') + '_wgan_%d/'% EPOCHS
 lr = 0.0001
-adam_beta_1 = 1e-1
+adam_beta_1 = 0.5
 evaluate_interval = EPOCHS / 20
 
 
@@ -92,9 +92,9 @@ class Train:
                     break
                 if metrics_['WSSTD'] < 0.03 and metrics_['RMSE'] < 0.1:
                     stable += 1
-                    if stable > 2:
-                        final_epoch = epoch
-                        break
+                    # if stable > 2:
+                    #     final_epoch = epoch
+                    #     break
                 else:
                     stable = 0
         self.save_model(save_path, time_consumed_total)
@@ -211,7 +211,7 @@ if __name__ == "__main__":
 
     # invalid: to many neighbors: '都心名苑', '新白马', '丰园酒店', '红围坊停车场', '天元大厦', '同乐大厦', '万达丰大厦', '文锦广场',
     # '银都大厦', '永新商业城', '中信星光明庭管理处',
-    good_sites = ['都市名园', '华瑞大厦', '红围坊停车场', '银都大厦']
+    good_sites = ['都市名园', '华瑞大厦', '红围坊停车场', '银都大厦', '宝琳珠宝交易中心']
 
     sites = ['都市名园', '华瑞大厦', '东翠花园', '化工大厦', '武警生活区银龙花园', '中深石化大厦', '翠景山庄', '万山珠宝工业园', '桂龙家园']
     big_sites = ['都心名苑', '新白马', '丰园酒店', '红围坊停车场', '天元大厦', '同乐大厦', '万达丰大厦', '文锦广场', '银都大厦', '永新商业城', '中信星光明庭管理处']

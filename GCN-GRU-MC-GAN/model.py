@@ -6,7 +6,7 @@ from tensorflow.python.keras.layers import GRU, LSTM, CuDNNLSTM, CuDNNGRU
 
 l2_reg = 5e-4 / 2  # L2 regularization rate
 base = 16
-dropout = 0.3
+dropout = 0.5
 
 
 def make_generator(name, s, adj, node_f, use_gcn=True, use_gru=True):
@@ -22,10 +22,10 @@ def make_generator(name, s, adj, node_f, use_gcn=True, use_gru=True):
         # N*Cov2
         input_s1 = Dot(axes=(2, 1))([input_s, gcov2])
     else:
-        input_s1 = LeakyReLU()((Dense(4 * base, input_shape=(n,))(input_s)))
+        input_s1 = Dropout(dropout)(LeakyReLU()(Dense(4 * base, input_shape=(n,))(input_s)))
 
-    fc1 = LeakyReLU()((Dense(4 * base, input_shape=(n,))(input_s1)))
-    fc2 = LeakyReLU()((Dense(8 * base, input_shape=(n,))(fc1)))
+    fc1 = Dropout(dropout)(LeakyReLU()(Dense(4 * base, input_shape=(n,))(input_s1)))
+    fc2 = Dropout(dropout)(LeakyReLU()(Dense(8 * base, input_shape=(n,))(fc1)))
     # S*D2
 
     if use_gru:
