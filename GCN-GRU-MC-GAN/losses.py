@@ -3,13 +3,10 @@ import tensorflow as tf
 
 def get_wasserstein_losses_fn():
     def d_loss_fn(real_output, fake_output):
-        real_loss = - tf.reduce_mean(real_output)
-        fake_loss = tf.reduce_mean(fake_output)
-        return fake_loss + real_loss
+        return tf.reduce_mean(fake_output) - tf.reduce_mean(real_output)
 
     def g_loss_fn(fake_output):
-        fake_loss = - tf.reduce_mean(fake_output)
-        return fake_loss
+        return -tf.reduce_mean(fake_output)
 
     return d_loss_fn, g_loss_fn
 

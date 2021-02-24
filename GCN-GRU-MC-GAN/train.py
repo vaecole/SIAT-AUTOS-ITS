@@ -15,13 +15,13 @@ import pandas as pd
 import utils
 import metrics
 
-EPOCHS = 2000
-total_weeks = 5
-fix_weeks = 5
+EPOCHS = 5000
+total_weeks = 2
+fix_weeks = 2
 use_gpu = True
-root_path = 'generated/' + str(total_weeks) + 'weeks' + ('_gpu' if use_gpu else '') + '_wgan_%d/'% EPOCHS
-lr = 0.0001
-adam_beta_1 = 0.5
+root_path = 'generated/' + str(total_weeks) + 'weeks' + ('_gpu' if use_gpu else '') + '_wgan_compare_%d/' % EPOCHS
+lr = 0.00002
+adam_beta_1 = 0.8
 evaluate_interval = EPOCHS / 20
 
 
@@ -30,8 +30,9 @@ class Train:
         self.epochs = epochs
         self.seqs = seqs.astype('float32')
         self.seqs_noised = seqs.copy().astype('float32')
-        max_s = seqs[key].max()
-        self.seqs_noised[key] = np.random.normal(max_s / 2.0, max_s / 10.0, size=(seqs.shape[0])).astype('float32')
+        self.max_s = seqs[key].max()
+        self.seqs_noised[key] = np.random.normal(self.max_s / 2.0, self.max_s / 10.0, size=(seqs.shape[0])).astype(
+            'float32')
         self.key = key
 
         self.gen_optimizer = Adam(lr, adam_beta_1)
@@ -111,12 +112,21 @@ class Train:
             generated_output = self.call_model(self.discriminator, combined)
             loss_g = self.g_loss_fn(generated_output)
             loss_d = self.d_loss_fn(real_output, generated_output)
-        grad_gen = tape.gradient(loss_g, self.generator.trainable_variables)
-        grad_disc = tape.gradient(loss_d, self.discriminator.trainable_variables)
-        self.gen_optimizer.apply_gradients(zip(grad_gen, self.generator.trainable_variables))
-        self.desc_optimizer.apply_gradients(zip(grad_disc, self.discriminator.trainable_variables))
+        loss_dif = abs(loss_d - loss_g)
+        if loss_dif <= 10:
+            self.apply_grad(self.generator, tape, loss_g)
+            self.apply_grad(self.discriminator, tape, loss_d)
+        else:
+            if loss_d > loss_g:
+                self.apply_grad(self.discriminator, tape, loss_d)
+            else:
+                self.apply_grad(self.generator, tape, loss_g)
 
         return loss_g, loss_d
+
+    def apply_grad(self, d_or_g, tape, loss):
+        grad = tape.gradient(loss, d_or_g.trainable_variables)
+        self.desc_optimizer.apply_gradients(zip(grad, d_or_g.trainable_variables))
 
     def call_model(self, model_, seqs):
         return model_(inputs=[tf.expand_dims(seqs, axis=0), self.nodes_f_expanded, self.adj_expanded])
@@ -131,6 +141,8 @@ class Train:
 
     def get_compare(self, start_day, batch_size):
         real_seqs = self.seqs[start_day:start_day + batch_size]
+        self.seqs_noised[self.key] = np.random.normal(self.max_s / 2.0, self.max_s / 10.0,
+                                                      size=(self.seqs.shape[0])).astype('float32')
         noise_seq = self.seqs_noised[start_day:start_day + batch_size]
         generated_seqs = self.call_model(self.generator, noise_seq).numpy()[0]
         return real_seqs[self.key].values, generated_seqs
@@ -170,7 +182,7 @@ def start_train(epochs=10000, target_park='宝琳珠宝交易中心', start='201
     seqs_normal = seqs_normal.take(range(96 * 7 * 0, 96 * 7 * total_weeks))
     use_gru_bag = [True, False]
     use_gcn_bag = [True, False]
-    for (use_gcn, use_gru) in itertools.product(use_gcn_bag, use_gru_bag):
+    for (use_gru, use_gcn) in itertools.product(use_gru_bag, use_gcn_bag):
         name = target_park + ('_GCN' if use_gcn else '') + ('_GRU' if use_gru else '')
         print('Starting ' + name)
         site_path = root_path + name
@@ -212,9 +224,9 @@ if __name__ == "__main__":
     # invalid: to many neighbors: '都心名苑', '新白马', '丰园酒店', '红围坊停车场', '天元大厦', '同乐大厦', '万达丰大厦', '文锦广场',
     # '银都大厦', '永新商业城', '中信星光明庭管理处',
     good_sites = ['都市名园', '华瑞大厦', '红围坊停车场', '银都大厦', '宝琳珠宝交易中心']
+    sites = ['都市名园', '华瑞大厦', '东翠花园', '化工大厦', '武警生活区银龙花园', '中深石化大厦', '翠景山庄', '万山珠宝工业园', '桂龙家园', '宝琳珠宝交易中心']
+    big_sites = ['都心名苑', '新白马', '丰园酒店', '红围坊停车场', '天元大厦', '同乐大厦', '万达丰大厦', '文锦广场', '银都大厦', '永新商业城', '中信星光明庭管理处', '孙逸仙心血管医院停车场', '华润万象城']
+    compare_sites = ['都市名园', '华瑞大厦', '孙逸仙心血管医院停车场', '华润万象城']
 
-    sites = ['都市名园', '华瑞大厦', '东翠花园', '化工大厦', '武警生活区银龙花园', '中深石化大厦', '翠景山庄', '万山珠宝工业园', '桂龙家园']
-    big_sites = ['都心名苑', '新白马', '丰园酒店', '红围坊停车场', '天元大厦', '同乐大厦', '万达丰大厦', '文锦广场', '银都大厦', '永新商业城', '中信星光明庭管理处']
-
-    for site in tqdm(good_sites):
+    for site in tqdm(sites+good_sites):
         start_train(EPOCHS, site)

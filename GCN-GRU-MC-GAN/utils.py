@@ -1,4 +1,5 @@
 import pandas as pd
+import tensorflow as tf
 
 pd.options.mode.chained_assignment = None
 from sklearn import preprocessing
@@ -121,3 +122,12 @@ def compare_plot(name, save_path, real, generated):
     ax.legend(['real' + str(w) for w in range(1, n)] + ['gen' + str(w) for w in range(1, n)]);
     fig.savefig(save_path + "/compare_" + str(name) + ".png")
     plt.close()
+
+
+def dense_to_sparse(dense):
+    zero = tf.constant(0, dtype=tf.float32)
+    where = tf.not_equal(dense, zero)
+    indices = tf.where(where)
+    values = tf.gather_nd(dense, indices)
+    return tf.SparseTensor(indices, values, dense.shape)
+
