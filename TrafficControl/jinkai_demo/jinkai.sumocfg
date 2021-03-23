@@ -1,0 +1,6 @@
+<configuration>
+   <input>
+       <net-file value="jinkai.net.xml"/>
+       <route-files value="jinkai.rou.xml"/>
+   </input>
+</configuration>
