@@ -1,7 +1,7 @@
 import itertools
 import json
 import os
-from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.optimizers import SGD
 from spektral.utils import normalized_laplacian
 from tqdm import tqdm
 
@@ -15,14 +15,12 @@ import pandas as pd
 import utils
 import metrics
 
-EPOCHS = 5000
+EPOCHS = [5000]
 total_weeks = 2
 fix_weeks = 2
 use_gpu = True
-root_path = 'generated/' + str(total_weeks) + 'weeks' + ('_gpu' if use_gpu else '') + '_wgan_compare_%d/' % EPOCHS
-lr = 0.00002
-adam_beta_1 = 0.8
-evaluate_interval = EPOCHS / 20
+lr = 0.0002
+adam_beta_1 = 0.1
 
 
 class Train:
@@ -35,8 +33,8 @@ class Train:
             'float32')
         self.key = key
 
-        self.gen_optimizer = Adam(lr, adam_beta_1)
-        self.desc_optimizer = Adam(lr, adam_beta_1)
+        self.gen_optimizer = SGD(lr, adam_beta_1)
+        self.desc_optimizer = SGD(lr, adam_beta_1)
 
         self.adj = normalized_laplacian(adj.astype('float32'))
         self.adj_expanded = tf.expand_dims(normalized_laplacian(adj.astype('float32')), axis=0)
@@ -47,10 +45,18 @@ class Train:
                                                       use_gcn,
                                                       use_gru)
         self.d_loss_fn, self.g_loss_fn = losses.get_wasserstein_losses_fn()
+        self.wsst_hist = []
+        self.var_hist = []
+        self.rmse_hist = []
+        self.mae_hist = []
+        self.r2_hist = []
+        self.g_loss_hist = []
+        self.d_loss_hist = []
 
-    def __call__(self, epochs=None, save_path='generated/', batch_size=96):
+    def __call__(self, epochs=None, save_path='generated/', batch_size=96, monitor=True):
         if not os.path.exists(save_path):
             os.makedirs(save_path)
+
         if epochs is None:
             epochs = self.epochs
 
@@ -80,6 +86,16 @@ class Train:
             time_consumed_agv = time_consumed_total / epoch
             epochs_last = epochs - epoch
             estimate_time_last = epochs_last * time_consumed_agv
+            if epoch % 10 == 0:
+                metrics_ = self.evaluate(save_path, batch_size, epoch, plot_compare=False)
+                self.wsst_hist.append(metrics_.get('WSSTD'))
+                self.rmse_hist.append(metrics_.get('RMSE'))
+                self.mae_hist.append(metrics_.get('MAE'))
+                self.r2_hist.append(metrics_.get('R^2'))
+                self.var_hist.append(metrics_.get('Var'))
+                self.g_loss_hist.append(round(float(total_gen_loss / total_batch), 3))
+                self.d_loss_hist.append(round(float(total_disc_loss / total_batch), 3))
+
             if epoch % evaluate_interval == 0:
                 metrics_ = self.evaluate(save_path, batch_size, epoch)
                 metrics_['gen_loss'] = round(float(total_gen_loss / total_batch), 3)
@@ -91,13 +107,24 @@ class Train:
                 if not metrics_.keys().__contains__('RMSE'):
                     metrics_['crash'] = True
                     break
-                if metrics_['WSSTD'] < 0.03 and metrics_['RMSE'] < 0.1:
+                if monitor and metrics_['WSSTD'] < 0.02 and metrics_['RMSE'] < 0.09:
                     stable += 1
-                    # if stable > 2:
-                    #     final_epoch = epoch
-                    #     break
+                    if stable > 2:
+                        final_epoch = epoch
+                        break
                 else:
                     stable = 0
+
+                matrix_hist = pd.DataFrame()
+                matrix_hist['wsst_hist'] = self.wsst_hist
+                matrix_hist['rmse_hist'] = self.rmse_hist
+                matrix_hist['mae_hist'] = self.mae_hist
+                matrix_hist['r2_hist'] = self.r2_hist
+                matrix_hist['var_hist'] = self.var_hist
+                matrix_hist['g_loss_hist'] = self.g_loss_hist
+                matrix_hist['d_loss_hist'] = self.d_loss_hist
+                matrix_hist.to_csv(save_path + '/matrix_hist.csv', encoding='utf_8_sig', index=False)
+
         self.save_model(save_path, time_consumed_total)
         return time_consumed_total, final_epoch
 
@@ -147,22 +174,17 @@ class Train:
         generated_seqs = self.call_model(self.generator, noise_seq).numpy()[0]
         return real_seqs[self.key].values, generated_seqs
 
-    def evaluate(self, save_path, batch_size, name=None, restore_model=False):
+    def evaluate(self, save_path, batch_size, name=None, restore_model=False, plot_compare=True):
         if restore_model:
-            self.try_restore(save_path)
+            self.load_model(save_path)
         start_day = 0
         real, generated = self.get_compare(start_day, batch_size)
         if math.isnan(generated[0][0]):
             return dict()
 
-        utils.compare_plot(name, save_path, real, generated)
+        if plot_compare:
+            utils.compare_plot(name, save_path, real, generated)
         return metrics.get_common_metrics(real.reshape(1, -1)[0], generated.reshape(1, -1)[0])
-
-    def try_restore(self, base_path):
-        dirs = os.listdir(base_path)
-        assert dirs
-        load_path = os.path.join(base_path, dirs[0])
-        self.load_model(load_path)
 
     def load_model(self, save_path):
         print('try recover models from ' + save_path + '. ')
@@ -182,8 +204,9 @@ def start_train(epochs=10000, target_park='宝琳珠宝交易中心', start='201
     seqs_normal = seqs_normal.take(range(96 * 7 * 0, 96 * 7 * total_weeks))
     use_gru_bag = [True, False]
     use_gcn_bag = [True, False]
+    monitor = False
     for (use_gru, use_gcn) in itertools.product(use_gru_bag, use_gcn_bag):
-        name = target_park + ('_GCN' if use_gcn else '') + ('_GRU' if use_gru else '')
+        name = target_park + '/GAN' + ('_GCN' if use_gcn else '') + ('_GRU' if use_gru else '')
         print('Starting ' + name)
         site_path = root_path + name
         if not os.path.exists(site_path):
@@ -193,10 +216,10 @@ def start_train(epochs=10000, target_park='宝琳珠宝交易中心', start='201
         describe_site(nks, seqs_normal, site_path, target_park, node_f)
         train = Train(seqs_normal, adj, node_f, epochs, nks[target_park], use_gcn, batch_size, use_gru)
         # print(train.generator.summary())
-        start = time.time()
-        save_path = site_path + '/' + str(start)
-        os.makedirs(save_path)
-        train_time_consumed, final_epoch = train(epochs, save_path, batch_size)
+        train_time_consumed, final_epoch = train(epochs, site_path, batch_size, monitor)
+        if final_epoch < epochs:
+            epochs = final_epoch
+            monitor = False
         # evaluation
         metrics_ = train.evaluate(site_path, batch_size)
         metrics_['name'] = name
@@ -225,8 +248,29 @@ if __name__ == "__main__":
     # '银都大厦', '永新商业城', '中信星光明庭管理处',
     good_sites = ['都市名园', '华瑞大厦', '红围坊停车场', '银都大厦', '宝琳珠宝交易中心']
     sites = ['都市名园', '华瑞大厦', '东翠花园', '化工大厦', '武警生活区银龙花园', '中深石化大厦', '翠景山庄', '万山珠宝工业园', '桂龙家园', '宝琳珠宝交易中心']
-    big_sites = ['都心名苑', '新白马', '丰园酒店', '红围坊停车场', '天元大厦', '同乐大厦', '万达丰大厦', '文锦广场', '银都大厦', '永新商业城', '中信星光明庭管理处', '孙逸仙心血管医院停车场', '华润万象城']
-    compare_sites = ['都市名园', '华瑞大厦', '孙逸仙心血管医院停车场', '华润万象城']
+    big_sites = ['都心名苑', '新白马', '丰园酒店', '红围坊停车场', '天元大厦', '同乐大厦', '万达丰大厦', '文锦广场', '银都大厦', '永新商业城', '中信星光明庭管理处',
+                 '孙逸仙心血管医院停车场', '华润万象城']
+    # compare_sites = ['都市名园', '华瑞大厦', '孙逸仙心血管医院停车场', '名都大厦', '公路局大院', '合作金融大厦','国家珠宝检测中心','蔡屋围发展大厦','金园花园','雅园宾馆']
+    compare_sites = ['国家珠宝检测中心', '雅园宾馆', '都市名园', '华瑞大厦', '孙逸仙心血管医院停车场', '名都大厦', '公路局大院', '合作金融大厦', '蔡屋围发展大厦', '金园花园']
+    gru_advanced = ['公路局大院']
 
-    for site in tqdm(sites+good_sites):
-        start_train(EPOCHS, site)
+    all_sites = ['万山珠宝工业园', '万达丰大厦', '世濠大厦', '东悦名轩', '东方华都', '东方大厦', '东方颐园', '东晓综合市场', '东翠花园', '东门天地大厦', '中信星光明庭管理处',
+                 '中深石化大厦', '中航凯特公寓', '丰园酒店', '丽晶大厦', '俊园大厦', '信托大厦', '公路局大院', '化工大厦', '半岛大厦', '华丽园大厦', '华安国际大酒店',
+                 '华润万象城', '华瑞大厦', '华通大厦', '华隆园', '合作金融大厦', '合正星园', '同乐大厦', '名都大厦', '嘉年华名苑', '国家珠宝检测中心', '国都花园', '大信大厦',
+                 '天元大厦', '孙逸仙心血管医院停车场', '宝丽大厦', '宝琳珠宝交易中心', '工人文化宫', '建设集团大院', '惠名花园', '振业大厦', '文锦广场', '新白马', '朝花大厦',
+                 '柏丽花园', '桂花大厦', '桂龙家园', '武警生活区银龙花园', '永新商业城', '永通大厦', '沁芳名苑', '洪涛大厦', '深业大厦', '湖景大厦', '湖臻大厦', '物资大厦',
+                 '电影大厦', '百仕达花园一期', '百仕达花园二期', '百汇大厦', '红围坊停车场', '红桂大厦', '缤纷时代家园', '翠拥华庭', '翠景山庄', '翡翠公寓', '联兴大厦',
+                 '荔景大厦',
+                 '蔡屋围发展大厦', '都市名园', '都心名苑', '金丰城', '金园花园', '金山大厦', '金湖文化中心', '金碧苑', '金融中心', '银都大厦', '长虹大厦', '雅园宾馆',
+                 '鲲田商贸停车场', '鸿园居', '鸿基大厦', '鸿景翠峰花园', '鸿翠苑', '鹏兴花园', '鹏兴花园三期', '鹏兴花园二期', '鹏兴花园六期', '鹤围村', '龙园山庄']
+
+    graph_good_sites = ['中信星光明庭管理处','中航凯特公寓','丽晶大厦','华丽园大厦','华安国际大酒店','华瑞大厦', '合作金融大厦','名都大厦','国家珠宝检测中心','国都花园','永新商业城','湖景大厦','物资大厦','翡翠公寓','蔡屋围发展大厦','都市名园','金丰城','长虹大厦','雅园宾馆','鸿基大厦','鹏兴花园六期']
+
+    for EPOCH in EPOCHS:
+        global root_path
+        root_path = 'generated/' + str(total_weeks) + 'weeks' + (
+            '_gpu' if use_gpu else '') + '_wgan_compare_less_gcn_%d_' % EPOCH + str(time.time()) + '/'
+        global evaluate_interval
+        evaluate_interval = EPOCH / 20
+        for site in tqdm(graph_good_sites):
+            start_train(EPOCH, site)

@@ -1,5 +1,6 @@
 import pandas as pd
 import tensorflow as tf
+import os
 
 pd.options.mode.chained_assignment = None
 from sklearn import preprocessing
@@ -60,7 +61,6 @@ def max_min_scale(raw):
     raw[raw.columns.values] = min_max_scaler.fit_transform(raw[raw.columns.values])
     return raw
 
-
 def init_data(target_park='宝琳珠宝交易中心', start='2016-01-02', end='2017-01-02', graph_nodes_max_dis=0.5):
     basic_info_df = pd.read_csv('generated/data/parkings_info.csv')
     basic_info_df['lat_long'] = list(zip(basic_info_df['latitude'], basic_info_df['longitude']))
@@ -76,7 +76,8 @@ def init_data(target_park='宝琳珠宝交易中心', start='2016-01-02', end='2
 import matplotlib.pyplot as plt
 
 
-def init_data_for_search(start='2016-01-02', end='2017-01-02', graph_nodes_max_dis=0.5):
+def init_data_for_search(start='2016-01-02', end='2017-01-02', graph_nodes_max_dis=0.5, take_week=2):
+    plt.rc('font', size=14)
     basic_info_df = pd.read_csv('generated/data/parkings_info.csv')
     basic_info_df['lat_long'] = list(zip(basic_info_df['latitude'], basic_info_df['longitude']))
     result = []
@@ -90,21 +91,25 @@ def init_data_for_search(start='2016-01-02', end='2017-01-02', graph_nodes_max_d
         key = nks[target_park]
         node_f = get_nodes_features(target_area)
         try:
-            seqs_raw = build_area_seqs(target_area, nks, start, end)
+            seqs_raw = build_area_seqs(target_area, nks, start, end).take(range(96 * 7 * 0, 96 * 7 * take_week))
             seqs_normal = seqs_raw.fillna(0)
             seqs_normal = max_min_scale(seqs_normal)
             result.append([conns, target_park, seqs_normal, adj, node_f, key])
-            seqs_normal[key].plot(ax=ax)
-            fig.savefig("generated/data/raw_" + target_park + "_target.png")
-            plt.close()
+            # seqs_normal[key].plot(ax=ax)
+            # fig.savefig("generated/data/2/raw_" + target_park + "_target.png")
+            # plt.close()
             fig, ax = plt.subplots()
             fig.set_figheight(30)
             fig.set_figwidth(100)
             plt.xticks(fontsize=20)
             plt.yticks(fontsize=20)
             plt.legend(fontsize=20)
-            seqs_normal.plot(ax=ax)
-            fig.savefig("generated/data/raw_" + target_park + "_area.png")
+            seqs_normal.plot(ax=ax, linewidth=2, alpha=0.7)
+            seqs_normal[key].plot(ax=ax, linewidth=3, alpha=0.8)
+            # ax.legend(['Ground Truth'] + ['Generated'], fontsize=16)
+            ax.set_ylabel('Occupied Parking Space Rate', fontsize=18)
+            ax.set_xlabel('Date Time', fontsize=18)
+            fig.savefig("generated/data/2/raw_" + target_park + "_area.png")
             plt.close()
         except AssertionError as ae:
             print(ae)
@@ -113,13 +118,25 @@ def init_data_for_search(start='2016-01-02', end='2017-01-02', graph_nodes_max_d
 
 
 def compare_plot(name, save_path, real, generated):
+    plt.rc('font', size=14)
+    # plt.xticks(fontsize=20)
+    # plt.yticks(fontsize=20)
+    # plt.title('Real Data and Generated Data' + ' label ', fontsize=22)
+    # plt.ylabel('Occupied Parking Space Rate', fontsize=22)
+    # plt.xlabel('Time Point', fontsize=22)
+    # plt.legend(fontsize=20)
+    plt.grid(True)
     fig, ax = plt.subplots()
     fig.set_figheight(8)
     fig.set_figwidth(20)
+    # fig.suptitle('This is the figure title', fontsize=15)
     all_seqs = pd.concat([pd.DataFrame(real), pd.DataFrame(generated)], axis=1)
-    all_seqs.plot(ax=ax)
+    pd.DataFrame(all_seqs).plot(ax=ax, linewidth=2, alpha=0.7)
     n = 2
-    ax.legend(['real' + str(w) for w in range(1, n)] + ['gen' + str(w) for w in range(1, n)]);
+    # ax.legend(['real' + str(w) for w in range(1, n)] + ['gen' + str(w) for w in range(1, n)])
+    ax.legend(['Ground Truth'] + ['Generated'], fontsize=16)
+    ax.set_ylabel('Occupied Parking Space Rate', fontsize=18)
+    ax.set_xlabel('Time Point', fontsize=18)
     fig.savefig(save_path + "/compare_" + str(name) + ".png")
     plt.close()
 
@@ -131,3 +148,13 @@ def dense_to_sparse(dense):
     values = tf.gather_nd(dense, indices)
     return tf.SparseTensor(indices, values, dense.shape)
 
+
+def matrix_array_to_csv(save_path, colum_name, ary):
+    filename = '/matrix_hist.csv'
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+        pd.DataFrame().to_csv(save_path + filename, encoding='utf_8_sig', index=False)
+
+    df = pd.read_csv(save_path + filename)
+    df[colum_name] = ary
+    df.to_csv(save_path + filename, encoding='utf_8_sig', index=False)
