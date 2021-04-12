@@ -63,6 +63,8 @@ def max_min_scale(raw):
 
 def init_data(target_park='宝琳珠宝交易中心', start='2016-01-02', end='2017-01-02', graph_nodes_max_dis=0.5):
     basic_info_df = pd.read_csv('generated/data/parkings_info.csv')
+    basic_info_df.longitude -= 0.0116
+    basic_info_df.latitude-=0.0038
     basic_info_df['lat_long'] = list(zip(basic_info_df['latitude'], basic_info_df['longitude']))
     target_area, adj, target_map, nks, kns, conns = build_graph(basic_info_df, target_park, max_dis=graph_nodes_max_dis)
     # target_park_basic_info = basic_info_df.loc[basic_info_df.parking_name == target_park].iloc[0]
@@ -70,7 +72,7 @@ def init_data(target_park='宝琳珠宝交易中心', start='2016-01-02', end='2
     seqs_raw = build_area_seqs(target_area, nks, start, end)
     seqs_normal = seqs_raw.fillna(0)
     seqs_normal = max_min_scale(seqs_normal)
-    return seqs_normal, adj, node_f, nks, conns, target_map
+    return seqs_normal, adj, node_f, nks, conns, target_map, target_area
 
 
 import matplotlib.pyplot as plt
@@ -128,7 +130,7 @@ def compare_plot(name, save_path, real, generated):
     plt.grid(True)
     fig, ax = plt.subplots()
     fig.set_figheight(8)
-    fig.set_figwidth(20)
+    fig.set_figwidth(12)
     # fig.suptitle('This is the figure title', fontsize=15)
     all_seqs = pd.concat([pd.DataFrame(real), pd.DataFrame(generated)], axis=1)
     pd.DataFrame(all_seqs).plot(ax=ax, linewidth=2, alpha=0.7)

@@ -37,7 +37,7 @@ def build_adj_matrix(area, max_dist=0.5):
     return adj_matrix, name_key_dict, key_name_dict, conns
 
 
-def build_adj_map(target, area_, adj_mat, key_names, name_keys):
+def build_adj_map(target, area_, adj_mat, key_names, name_keys, conn_dis):
     # Instantiate a feature group for the parkings in the dataframe
     parkings = folium.map.FeatureGroup()
 
@@ -46,7 +46,7 @@ def build_adj_map(target, area_, adj_mat, key_names, name_keys):
         parkings.add_child(
             folium.CircleMarker(
                 [lat, lng],
-                radius=5,  # define how big you want the circle markers to be
+                radius=8,  # define how big you want the circle markers to be
                 color='yellow',
                 fill=True,
                 fill_color=('red' if name == target.parking_name else 'green'),
@@ -55,11 +55,11 @@ def build_adj_map(target, area_, adj_mat, key_names, name_keys):
                 encode='uft-8'))
         neighbor_index = 0
         for is_neighbor in adj_mat[name_keys[name]]:
-            if is_neighbor == 1:
+            if 0 < is_neighbor < conn_dis:  # and target.parking_name == name:
                 start = (lat, lng)
                 end_parking = area_.loc[area_["parking_name"] == key_names[neighbor_index]].iloc[0]
                 end = (end_parking.latitude, end_parking.longitude)
-                parkings.add_child(folium.PolyLine([start, end], color="blue", weight=1.5, opacity=0.2))
+                parkings.add_child(folium.PolyLine([start, end], color="blue", weight=3, opacity=0.2))
             neighbor_index += 1
 
     luohu_map = folium.Map(location=[target.latitude, target.longitude], zoom_start=16)
@@ -67,9 +67,9 @@ def build_adj_map(target, area_, adj_mat, key_names, name_keys):
     return luohu_map
 
 
-def build_graph(basic_info_df, parking_name, max_dis=0.5, conn_coe=3 / 4):
+def build_graph(basic_info_df, parking_name, max_dis=0.5, conn_coe=8 / 10):
     target_parking = basic_info_df.loc[basic_info_df.parking_name == parking_name].iloc[0]
     area = get_area(target_parking, max_dis, basic_info_df)
     adj_mat, nks, kns, conns = build_adj_matrix(area, max_dis * conn_coe)
-    target_map = build_adj_map(target_parking, area, adj_mat, kns, nks)
+    target_map = build_adj_map(target_parking, area, adj_mat, kns, nks, max_dis * conn_coe)
     return area, np.mat(adj_mat), target_map, nks, kns, conns
