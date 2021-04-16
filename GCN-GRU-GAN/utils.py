@@ -133,10 +133,11 @@ def compare_plot(name, save_path, real, generated):
     fig.set_figwidth(12)
     # fig.suptitle('This is the figure title', fontsize=15)
     all_seqs = pd.concat([pd.DataFrame(real), pd.DataFrame(generated)], axis=1)
-    pd.DataFrame(all_seqs).plot(ax=ax, linewidth=2, alpha=0.7)
+    pd.DataFrame(pd.DataFrame(generated)).plot(ax=ax, linewidth=2, alpha=0.7)
     n = 2
     # ax.legend(['real' + str(w) for w in range(1, n)] + ['gen' + str(w) for w in range(1, n)])
-    ax.legend(['Ground Truth'] + ['Generated'], fontsize=16)
+    #ax.legend(['Ground Truth'] + ['Generated'], fontsize=16)
+    ax.legend(['Generated'], fontsize=16)
     ax.set_ylabel('Occupied Parking Space Rate', fontsize=18)
     ax.set_xlabel('Time Point', fontsize=18)
     fig.savefig(save_path + "/compare_" + str(name) + ".png")

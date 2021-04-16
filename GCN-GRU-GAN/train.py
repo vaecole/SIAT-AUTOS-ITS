@@ -46,6 +46,7 @@ class Train:
                                                       use_gru)
         self.d_loss_fn, self.g_loss_fn = losses.get_wasserstein_losses_fn()
         self.wsst_hist = []
+        self.cos_simi = []
         self.var_hist = []
         self.rmse_hist = []
         self.mae_hist = []
@@ -86,9 +87,10 @@ class Train:
             time_consumed_agv = time_consumed_total / epoch
             epochs_last = epochs - epoch
             estimate_time_last = epochs_last * time_consumed_agv
-            if epoch % 10 == 0:
+            if epoch % 1 == 0:
                 metrics_ = self.evaluate(save_path, batch_size, epoch, plot_compare=False)
                 self.wsst_hist.append(metrics_.get('WSSTD'))
+                self.cos_simi.append(metrics_.get('COS_SIMI'))
                 self.rmse_hist.append(metrics_.get('RMSE'))
                 self.mae_hist.append(metrics_.get('MAE'))
                 self.r2_hist.append(metrics_.get('R^2'))
@@ -117,6 +119,7 @@ class Train:
 
                 matrix_hist = pd.DataFrame()
                 matrix_hist['wsst_hist'] = self.wsst_hist
+                matrix_hist['cos_simi'] = self.cos_simi
                 matrix_hist['rmse_hist'] = self.rmse_hist
                 matrix_hist['mae_hist'] = self.mae_hist
                 matrix_hist['r2_hist'] = self.r2_hist
@@ -199,7 +202,7 @@ class Train:
 
 
 def start_train(epochs=10000, target_park='宝琳珠宝交易中心', start='2016-01-02', end='2017-01-02'):
-    seqs_normal, adj, node_f, nks, conns, _ = utils.init_data(target_park, start, end)
+    seqs_normal, adj, node_f, nks, conns, _, _ = utils.init_data(target_park, start, end)
     batch_size = 96 * 7 * fix_weeks
     seqs_normal = seqs_normal.take(range(96 * 7 * 0, 96 * 7 * total_weeks))
     use_gru_bag = [True, False]
@@ -272,5 +275,5 @@ if __name__ == "__main__":
             '_gpu' if use_gpu else '') + '_wgan_compare_less_gcn_%d_' % EPOCH + str(time.time()) + '/'
         global evaluate_interval
         evaluate_interval = EPOCH / 20
-        for site in tqdm(graph_good_sites):
+        for site in tqdm(['合作金融大厦', '都市名园']):
             start_train(EPOCH, site)

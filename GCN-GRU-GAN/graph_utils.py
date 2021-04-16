@@ -49,7 +49,7 @@ def build_adj_map(target, area_, adj_mat, key_names, name_keys, conn_dis):
                 radius=8,  # define how big you want the circle markers to be
                 color='yellow',
                 fill=True,
-                fill_color=('red' if name == target.parking_name else 'green'),
+                fill_color=('red' if name == target.parking_name else 'blue'),
                 fill_opacity=0.6,
                 popup=name,
                 encode='uft-8'))
@@ -59,7 +59,7 @@ def build_adj_map(target, area_, adj_mat, key_names, name_keys, conn_dis):
                 start = (lat, lng)
                 end_parking = area_.loc[area_["parking_name"] == key_names[neighbor_index]].iloc[0]
                 end = (end_parking.latitude, end_parking.longitude)
-                parkings.add_child(folium.PolyLine([start, end], color="blue", weight=3, opacity=0.2))
+                parkings.add_child(folium.PolyLine([start, end], color="green", weight=3, opacity=0.2))
             neighbor_index += 1
 
     luohu_map = folium.Map(location=[target.latitude, target.longitude], zoom_start=16)

@@ -20,7 +20,7 @@ def make_generator(name, s, adj, node_f, use_gcn=True, use_gru=True):
     if use_gcn:
         gcov1 = GraphConv(2 * base)([input_f, input_g])
         # gcov2 = GraphConv(base)([gcov1, input_g])
-        input_s1 = Dot(axes=(2, 1))([input_s, gcov1])  # dot product: element by element multiply, (s,n).(n,n)
+        input_s1 = Dot(axes=(2, 1))([input_s, gcov1])  # dot product: element by element multiply, (1,s,n).(1,n,n)=(1,s,n)
     else:
         input_s1 = input_s
     fc1 = Dense(4 * base, activation='relu', input_shape=(n,))(input_s1)

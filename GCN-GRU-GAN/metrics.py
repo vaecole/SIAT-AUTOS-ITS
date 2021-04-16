@@ -1,7 +1,9 @@
 import codecs
 import os
 import json
+import numpy as np
 from sklearn import metrics
+from sklearn.metrics.pairwise import cosine_similarity
 
 from scipy.stats import wasserstein_distance
 
@@ -18,6 +20,7 @@ def get_mean_absolute_error(seq1, seq2):
 def get_common_metrics(seq1, seq2):
     return {
         'WSSTD': round(wasserstein_distance(seq1, seq2), 5),
+        'COS_SIMI': round(cosine_similarity(np.array([seq1.tolist()]), np.array([seq2.tolist()]))[0][0], 5),
         'RMSE': round(float(metrics.mean_squared_error(seq1, seq2, squared=False)), 5),
         'MAE': round(float(metrics.mean_absolute_error(seq1, seq2)), 5),
         'R^2': round(float(metrics.r2_score(seq1, seq2)), 5),
